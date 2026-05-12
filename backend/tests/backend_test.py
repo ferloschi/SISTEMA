@@ -372,6 +372,96 @@ class TestSales:
         assert r.status_code == 404
 
 
+# ---------- Sales: manual card_fee_pct override ----------
+class TestSalesFeeOverride:
+    @pytest.fixture(scope="class")
+    def pms(self, client):
+        items = client.get(f"{API}/payment-methods").json()
+        return {p["name"]: p for p in items}
+
+    def _make_payload(self, pm_id, today, fee=None):
+        payload = {
+            "sale_date": today,
+            "payment_method_id": pm_id,
+            "items": [
+                {"name": "TEST_OverrideItem", "qty": 1, "unit_price": 200.0, "unit_cost": 50.0}
+            ],
+        }
+        if fee is not None:
+            payload["card_fee_pct"] = fee
+        return payload
+
+    def test_override_credit_card_fee_55(self, client, pms):
+        """POST /api/sales with card_fee_pct=5.5 should use 5.5% (not method default 3.99%)."""
+        today = date.today().isoformat()
+        credito = pms["Cartão Crédito"]
+        r = client.post(f"{API}/sales", json=self._make_payload(credito["id"], today, fee=5.5))
+        assert r.status_code == 200, r.text
+        s = r.json()
+        assert s["card_fee_pct"] == 5.5
+        assert s["fee_amount"] == 11.0  # 200 * 5.5%
+        assert s["net_value"] == 189.0  # 200 - 11
+        assert s["profit"] == 139.0  # 200 - 50 - 11
+        assert s["gross_value"] == 200.0
+        client.delete(f"{API}/sales/{s['id']}")
+
+    def test_no_override_uses_method_default(self, client, pms):
+        """POST /api/sales without card_fee_pct should use 3.99% for Cartão Crédito."""
+        today = date.today().isoformat()
+        credito = pms["Cartão Crédito"]
+        r = client.post(f"{API}/sales", json=self._make_payload(credito["id"], today, fee=None))
+        assert r.status_code == 200, r.text
+        s = r.json()
+        assert s["card_fee_pct"] == 3.99
+        assert s["fee_amount"] == 7.98  # 200 * 3.99%
+        assert s["net_value"] == 192.02
+        assert s["profit"] == 142.02  # 200 - 50 - 7.98
+        client.delete(f"{API}/sales/{s['id']}")
+
+    def test_override_zero_fee_applies_zero(self, client, pms):
+        """POST /api/sales with card_fee_pct=0 should apply 0% (NOT fall back to default)."""
+        today = date.today().isoformat()
+        credito = pms["Cartão Crédito"]
+        r = client.post(f"{API}/sales", json=self._make_payload(credito["id"], today, fee=0))
+        assert r.status_code == 200, r.text
+        s = r.json()
+        assert s["card_fee_pct"] == 0.0
+        assert s["fee_amount"] == 0.0
+        assert s["net_value"] == 200.0
+        assert s["profit"] == 150.0  # 200 - 50 - 0
+        client.delete(f"{API}/sales/{s['id']}")
+
+    def test_override_on_non_card_method(self, client, pms):
+        """Override on PIX (is_card=False) with card_fee_pct=2 should still apply 2%."""
+        today = date.today().isoformat()
+        pix = pms["PIX"]
+        r = client.post(f"{API}/sales", json=self._make_payload(pix["id"], today, fee=2))
+        assert r.status_code == 200, r.text
+        s = r.json()
+        assert s["card_fee_pct"] == 2.0
+        assert s["fee_amount"] == 4.0  # 200 * 2%
+        assert s["net_value"] == 196.0
+        assert s["profit"] == 146.0  # 200 - 50 - 4
+        # PIX is not card => receive_date == sale_date (override should not change receive_date logic)
+        assert s["receive_date"] == today
+        client.delete(f"{API}/sales/{s['id']}")
+
+    def test_override_debit_card_fee(self, client, pms):
+        """Override on Cartão Débito should replace 1.99% with the supplied value."""
+        today = date.today().isoformat()
+        debito = pms["Cartão Débito"]
+        r = client.post(f"{API}/sales", json=self._make_payload(debito["id"], today, fee=4.25))
+        assert r.status_code == 200, r.text
+        s = r.json()
+        assert s["card_fee_pct"] == 4.25
+        assert s["fee_amount"] == 8.5  # 200 * 4.25%
+        assert s["net_value"] == 191.5
+        # Still treated as card -> receive_date = sale_date + 30 days
+        expected_recv = (datetime.strptime(today, "%Y-%m-%d").date() + timedelta(days=30)).isoformat()
+        assert s["receive_date"] == expected_recv
+        client.delete(f"{API}/sales/{s['id']}")
+
+
 # ---------- Dashboard ----------
 class TestDashboard:
     def test_dashboard_structure(self, client):

@@ -38,7 +38,5 @@ export const PRODUCT_CATEGORIES = [
   "Piercing",
   "Material",
   "Insumo",
-  "Procedimento",
-  "Embalagem",
   "Outros",
 ];

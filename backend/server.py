@@ -148,6 +148,7 @@ class SaleCreate(BaseModel):
     items: List[SaleItem] = []
     description: Optional[str] = ""
     payment_method_id: str
+    card_fee_pct: Optional[float] = None  # manual override; None = use default from method
     appointment_id: Optional[str] = ""
 
 
@@ -473,7 +474,11 @@ async def compute_sale(payload: SaleCreate) -> Sale:
     items = [i if isinstance(i, SaleItem) else SaleItem(**i) for i in payload.items]
     gross = sum(i.qty * i.unit_price for i in items)
     cost = sum(i.qty * i.unit_cost for i in items)
-    fee_pct = pm.get("card_fee_pct", 0.0) if pm.get("is_card") else 0.0
+    # Allow manual fee override (oscillating card fees). If None, use method default.
+    if payload.card_fee_pct is not None:
+        fee_pct = float(payload.card_fee_pct)
+    else:
+        fee_pct = pm.get("card_fee_pct", 0.0) if pm.get("is_card") else 0.0
     fee_amount = round(gross * fee_pct / 100, 2)
     net_value = round(gross - fee_amount, 2)
     profit = round(gross - cost - fee_amount, 2)

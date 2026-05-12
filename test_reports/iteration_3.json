@@ -1,0 +1,32 @@
+{
+  "summary": "Backend regression + new tests for POST /api/sales card_fee_pct override. Added 5 targeted tests covering all override scenarios. 40/40 tests passed (35 regression + 5 new).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "compute_sale correctly uses `if payload.card_fee_pct is not None` distinguishing 0 from None. Verified working.",
+    "Override on non-card methods (PIX/Dinheiro) applies fee BUT receive_date logic still ties to pm.is_card (sale_date for non-card). This is acceptable since manual override pertains only to the fee % - documented behavior.",
+    "Suggestion: Consider validating card_fee_pct range (e.g., 0 <= fee_pct <= 100) at API layer to prevent absurd values. Currently any float is accepted."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not tested (backend-only per request)"},
+  "test_credentials": "N/A - no auth in this app",
+  "seed_data_creation": "Tests create TEST_* prefixed sales/products and clean up after each test. Default payment methods (Dinheiro, PIX, Cartão Débito 1.99%, Cartão Crédito 3.99%) are auto-seeded by backend startup.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New TestSalesFeeOverride class covers: (1) override 5.5% on Cartão Crédito; (2) no override -> default 3.99%; (3) override 0% does NOT fall back (key 'is not None' check); (4) override 2% on PIX (non-card) still applied; (5) override on Cartão Débito 4.25% replaces 1.99% and receive_date still +30d since pm.is_card=True. All 40 backend tests pass in ~5.4s.",
+  "rca_of_the_issue": "N/A - feature implementation verified working correctly. card_fee_pct override flow: SaleCreate accepts optional float; compute_sale checks `is not None` to distinguish explicit 0 from missing field; fallback to payment method default only when None."
+}

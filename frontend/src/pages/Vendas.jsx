@@ -34,6 +34,7 @@ const emptyForm = {
   items: [{ ...emptyItem }],
   description: "",
   payment_method_id: "",
+  card_fee_pct: "",
 };
 
 export default function Vendas() {
@@ -157,7 +158,14 @@ export default function Vendas() {
 
   const livePreview = useMemo(() => {
     const pm = methods.find((m) => m.id === form.payment_method_id);
-    const feePct = pm && pm.is_card ? pm.card_fee_pct : 0;
+    // Manual fee % takes precedence; otherwise use the method's default
+    const manualFee = form.card_fee_pct;
+    const feePct =
+      manualFee !== "" && manualFee !== null && manualFee !== undefined
+        ? Number(manualFee) || 0
+        : pm && pm.is_card
+        ? pm.card_fee_pct
+        : 0;
     const gross = form.items.reduce(
       (s, i) => s + Number(i.qty || 0) * Number(i.unit_price || 0),
       0
@@ -177,6 +185,17 @@ export default function Vendas() {
     };
   }, [form, methods]);
 
+  // When user picks a payment method, pre-fill the fee % with its default
+  // so they can quickly tweak it for this specific sale.
+  const onPickMethod = (id) => {
+    const pm = methods.find((m) => m.id === id);
+    setForm((f) => ({
+      ...f,
+      payment_method_id: id,
+      card_fee_pct: pm && pm.is_card ? String(pm.card_fee_pct) : "0",
+    }));
+  };
+
   const submit = async () => {
     if (!form.payment_method_id) {
       toast.error("Selecione a forma de pagamento.");
@@ -188,6 +207,10 @@ export default function Vendas() {
     }
     const payload = {
       ...form,
+      card_fee_pct:
+        form.card_fee_pct === "" || form.card_fee_pct === null
+          ? null
+          : Number(form.card_fee_pct),
       items: form.items
         .filter((i) => i.name)
         .map((i) => ({
@@ -307,7 +330,7 @@ export default function Vendas() {
                   <Label>Forma de pagamento *</Label>
                   <Select
                     value={form.payment_method_id}
-                    onValueChange={(v) => setForm({ ...form, payment_method_id: v })}
+                    onValueChange={onPickMethod}
                   >
                     <SelectTrigger data-testid="form-payment-method">
                       <SelectValue placeholder="Selecionar" />
@@ -317,11 +340,29 @@ export default function Vendas() {
                         .filter((m) => m.active)
                         .map((m) => (
                           <SelectItem key={m.id} value={m.id}>
-                            {m.name} {m.is_card ? `(${m.card_fee_pct}%)` : ""}
+                            {m.name} {m.is_card ? `(padrão ${m.card_fee_pct}%)` : ""}
                           </SelectItem>
                         ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div>
+                  <Label>Taxa do cartão (%) — editável</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Ex: 3.99"
+                    value={form.card_fee_pct}
+                    onChange={(e) =>
+                      setForm({ ...form, card_fee_pct: e.target.value })
+                    }
+                    data-testid="form-card-fee-pct"
+                  />
+                  <p className="text-[11px] text-[#7A726D] mt-1">
+                    Preenchido com a taxa padrão da forma escolhida — ajuste se essa venda
+                    teve taxa diferente.
+                  </p>
                 </div>
               </div>
 
@@ -412,12 +453,23 @@ export default function Vendas() {
                         />
                       </div>
                       <div className="col-span-4 md:col-span-1">
-                        <Label className="text-xs">Custo</Label>
+                        <Label className="text-xs flex items-center gap-1">
+                          Custo
+                          {it.product_id && (
+                            <span
+                              className="text-[10px] text-[#5C7053]"
+                              title="Puxado automaticamente do estoque"
+                            >
+                              auto
+                            </span>
+                          )}
+                        </Label>
                         <Input
                           type="number"
                           step="0.01"
                           value={it.unit_cost}
                           onChange={(e) => updateItem(idx, "unit_cost", e.target.value)}
+                          className={it.product_id ? "bg-[#E4EDDF]/30" : ""}
                         />
                       </div>
                       <div className="col-span-1 flex items-end justify-end">
