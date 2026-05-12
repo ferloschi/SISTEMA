@@ -1,0 +1,78 @@
+{
+  "project_name": "Dra. Brinquinho - Clinical CRM Dashboard",
+  "theme": {
+    "mode": "light",
+    "archetype": "1_organic_earthy",
+    "vibe": "Boutique pediatric clinic, professional, warm, trustworthy, organized"
+  },
+  "colors": {
+    "background": "#FDFDF9",
+    "surface": "#FFFFFF",
+    "primary": "#C97D63",
+    "primary_hover": "#B36B53",
+    "secondary": "#E8CFC1",
+    "secondary_hover": "#D8BCAE",
+    "accent": "#F2E4DF",
+    "text_primary": "#2D2825",
+    "text_secondary": "#7A726D",
+    "border": "#EBE8E3",
+    "success": "#8A9E82",
+    "warning": "#DDA15E",
+    "danger": "#D06B6B"
+  },
+  "typography": {
+    "font_families": {
+      "heading": "'Outfit', sans-serif",
+      "body": "'Manrope', sans-serif"
+    },
+    "hierarchy": {
+      "h1": "text-4xl tracking-tight font-semibold text-[#2D2825]",
+      "h2": "text-2xl tracking-tight font-medium text-[#2D2825]",
+      "h3": "text-xl font-medium text-[#2D2825]",
+      "body": "text-sm text-[#7A726D] leading-relaxed",
+      "labels": "text-xs font-semibold tracking-wider uppercase text-[#7A726D]"
+    },
+    "guidelines": "Use Outfit for all dashboard titles and card headers to give a boutique feel. Use Manrope for all data tables, input fields, and numbers for maximum legibility."
+  },
+  "spacing_and_layout": {
+    "container": "p-6 md:p-8 lg:p-10",
+    "grid_dashboard": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "card_padding": "p-6",
+    "form_gap": "gap-4",
+    "table_padding": "py-3 px-4",
+    "border_radius": "rounded-2xl for main cards, rounded-xl for inputs and small buttons, rounded-full for badges"
+  },
+  "surfaces": {
+    "cards": "bg-white border border-[#EBE8E3] shadow-sm hover:shadow-md transition-shadow duration-200",
+    "sidebar": "bg-[#FDFDF9] border-r border-[#EBE8E3]",
+    "header": "bg-white/80 backdrop-blur-md border-b border-[#EBE8E3] sticky top-0 z-40",
+    "badges": "bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1] px-2 py-1 rounded-full text-xs font-medium"
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#C97D63] text-white hover:bg-[#B36B53] shadow-sm rounded-xl px-4 py-2 transition-colors",
+      "secondary": "bg-[#F2E4DF] text-[#C97D63] hover:bg-[#E8CFC1] rounded-xl px-4 py-2 transition-colors",
+      "outline": "border-2 border-[#EBE8E3] text-[#2D2825] hover:border-[#C97D63] hover:text-[#C97D63] rounded-xl px-4 py-2"
+    },
+    "tables": {
+      "header": "bg-[#FDFDF9] border-y border-[#EBE8E3] text-left text-xs font-semibold uppercase text-[#7A726D] py-3 px-4",
+      "row": "border-b border-[#EBE8E3] hover:bg-[#FDFDF9]/50 transition-colors",
+      "cell": "py-4 px-4 text-sm text-[#2D2825]"
+    },
+    "forms": {
+      "input": "bg-white border border-[#EBE8E3] rounded-xl px-3 py-2 text-sm text-[#2D2825] focus:outline-none focus:ring-2 focus:ring-[#E8CFC1] focus:border-[#C97D63]",
+      "label": "block text-sm font-medium text-[#2D2825] mb-1.5"
+    }
+  },
+  "icons": {
+    "library": "lucide-react",
+    "guidelines": "Use stroke-width 1.5 for a delicate, boutique feel. Primary color for active states, secondary text color for inactive."
+  },
+  "media": {
+    "logo_instructions": "Create a typographic logo using 'Outfit' font. 'Dra.' in bold text_primary, 'Brinquinho' in primary color (#C97D63). Add a Lucide 'Sparkles' icon next to it.",
+    "placeholders": "Use subtle background patterns (like very faint topographic or noise textures) only in empty states or login screens, at max 2% opacity."
+  },
+  "testing": {
+    "attributes": "All interactive elements must include data-testid. Examples: data-testid='sidebar-nav-inventory', data-testid='sale-submit-btn'"
+  }
+}
