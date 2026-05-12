@@ -1,0 +1,47 @@
+{
+  "summary": "Comprehensive backend testing of Dra. Brinquinho API completed. All 27 pytest tests pass against the production preview URL. Covered: dashboard, products CRUD with auto-SKU, patients CRUD, appointments CRUD with +45d post_sale_date computation, mark-reminder-sent endpoint, payment methods (defaults + CRUD), sales (PIX no-fee, Cartão Crédito with 3.99% fee, profit/net/fee calculations, post_sale_date, receive_date +30d for cards), month filter on /api/sales, stock decrement on sale creation and restore on deletion, pending reminders window (-7 to +14 days), and /api/reports/monthly aggregation pipeline.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/products/{id}", "issue": "Uses ProductCreate (all optional except name); a request without sku falls back to existing sku — works but business validation is minimal (no required-field enforcement beyond name)."},
+      {"endpoint": "GET /api/reminders/pending", "issue": "Window is hardcoded (-7d..+14d). Same window is replicated in /api/dashboard. Consider extracting to a shared helper to avoid drift."},
+      {"endpoint": "POST /api/sales", "issue": "Stock is decremented but is allowed to go negative (no validation that stock_qty >= item.qty). Could cause inventory inconsistency."},
+      {"endpoint": "POST /api/sales", "issue": "card_fee_pct is only applied when payment method is_card=True; a non-card method with non-zero card_fee_pct will silently ignore the fee."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Validate stock before decrementing on POST /api/sales to avoid negative stock.",
+    "(Optional) Extract reminder window (-7d..+14d) into a shared constant/helper used by /dashboard and /reminders/pending.",
+    "(Optional) Add validation: appointment date format YYYY-MM-DD; sale_date format; reject malformed strings explicitly (currently compute_post_sale_date silently returns ''). "
+  ],
+  "critical_code_review_comments": [
+    "server.py uses deprecated FastAPI @app.on_event('startup'/'shutdown'); migrate to lifespan context manager (FastAPI >=0.95).",
+    "Stock can go negative on /api/sales since there is no stock_qty validation before $inc -qty.",
+    "No request validation on YYYY-MM-DD date inputs; compute_post_sale_date silently swallows parse errors and stores empty string — could mask bugs.",
+    "ensure_default_payment_methods is called both at startup and from GET /api/payment-methods (defensive; OK but redundant).",
+    "Duplicated reminder-window logic in dashboard() and pending_reminders() — DRY violation.",
+    "Mongo _id is correctly excluded with projection {'_id': 0} throughout — good.",
+    "All endpoints under /api prefix — good. Env vars used correctly (MONGO_URL, DB_NAME, REACT_APP_BACKEND_URL).",
+    "server.py is ~585 lines; still manageable but approaching the threshold to split into routers/models/services modules."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/__init__.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A"},
+  "test_credentials": "N/A (system has no auth per user choice)",
+  "seed_data_creation": "Tests create TEST_-prefixed products, patients, appointments and sales. Sales/appointments created mid-test are cleaned up. TEST_ products/patients remain in DB (idempotent for re-runs).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend fully green. Tests live at /app/backend/tests/backend_test.py and hit REACT_APP_BACKEND_URL. Re-run via: pytest /app/backend/tests/backend_test.py -v. Reminder-window test uses today-40d to ensure post_sale_date lands inside today-7..today+14 window — keep this in mind if tests run near a DST/timezone boundary.",
+  "rca of the issue": "N/A — no production bugs found. Single initial test failure (TestReminders) was a test-side off-by-one (used today-30d → post_sale_date=today+15d which is 1 day outside the today+14d cap). Fixed by changing to today-40d."
+}
