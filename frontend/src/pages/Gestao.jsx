@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { api, formatBRL } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { api, formatBRL, formatDate, PROCEDURE_TYPES } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,8 +13,22 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, CreditCard } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  CreditCard,
+  Stethoscope,
+  Calendar as CalendarIcon,
+} from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -24,9 +38,21 @@ import {
   YAxis,
   Tooltip,
   Legend,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 
+const COLORS = ["#C97D63", "#8A9E82", "#DDA15E", "#D06B6B", "#E8CFC1", "#7A726D", "#B36B53"];
+
 const emptyPM = { name: "", card_fee_pct: 0, is_card: false, active: true };
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const monthAgoISO = () => {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  return d.toISOString().slice(0, 10);
+};
 
 export default function Gestao() {
   const [methods, setMethods] = useState([]);
@@ -37,13 +63,22 @@ export default function Gestao() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [monthly, setMonthly] = useState([]);
 
+  // Procedimentos realizados
+  const [appointments, setAppointments] = useState([]);
+  const [dateFrom, setDateFrom] = useState(monthAgoISO());
+  const [dateTo, setDateTo] = useState(todayISO());
+  const [procFilter, setProcFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("realizado");
+
   const load = async () => {
-    const [pm, m] = await Promise.all([
+    const [pm, m, a] = await Promise.all([
       api.get("/payment-methods"),
       api.get("/reports/monthly", { params: { year } }),
+      api.get("/appointments"),
     ]);
     setMethods(pm.data);
     setMonthly(m.data);
+    setAppointments(a.data);
   };
 
   useEffect(() => {
@@ -94,6 +129,33 @@ export default function Gestao() {
     load();
   };
 
+  // ===== Procedimentos Realizados (filtros + métricas) =====
+  const filteredAppts = useMemo(() => {
+    return appointments.filter((a) => {
+      if (statusFilter !== "all" && a.status !== statusFilter) return false;
+      if (procFilter !== "all" && a.procedure_type !== procFilter) return false;
+      if (dateFrom && (a.date || "") < dateFrom) return false;
+      if (dateTo && (a.date || "") > dateTo) return false;
+      return true;
+    });
+  }, [appointments, statusFilter, procFilter, dateFrom, dateTo]);
+
+  const procStats = useMemo(() => {
+    const by = {};
+    for (const a of filteredAppts) {
+      const k = a.procedure_type || "—";
+      by[k] = (by[k] || 0) + 1;
+    }
+    return Object.entries(by)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredAppts]);
+
+  const totalProcs = filteredAppts.length;
+  const uniquePatients = new Set(
+    filteredAppts.map((a) => a.patient_id || a.patient_name)
+  ).size;
+
   const yearTotals = monthly.reduce(
     (acc, m) => {
       acc.gross += m.gross;
@@ -116,6 +178,13 @@ export default function Gestao() {
             className="data-[state=active]:bg-white data-[state=active]:text-[#C97D63] rounded-lg"
           >
             Relatório Financeiro
+          </TabsTrigger>
+          <TabsTrigger
+            value="procedimentos"
+            data-testid="tab-procedimentos"
+            className="data-[state=active]:bg-white data-[state=active]:text-[#C97D63] rounded-lg"
+          >
+            Procedimentos Realizados
           </TabsTrigger>
           <TabsTrigger
             value="pagamentos"
@@ -241,6 +310,227 @@ export default function Gestao() {
                       </td>
                     </tr>
                   ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="procedimentos" className="space-y-6 mt-6" data-testid="procedimentos-tab">
+          <div className="brinquinho-card p-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <Label className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                De
+              </Label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="mt-1"
+                data-testid="proc-filter-from"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                Até
+              </Label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="mt-1"
+                data-testid="proc-filter-to"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                Procedimento
+              </Label>
+              <Select value={procFilter} onValueChange={setProcFilter}>
+                <SelectTrigger className="mt-1" data-testid="proc-filter-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {PROCEDURE_TYPES.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                Status
+              </Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="mt-1" data-testid="proc-filter-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="realizado">Realizado</SelectItem>
+                  <SelectItem value="agendado">Agendado</SelectItem>
+                  <SelectItem value="cancelado">Cancelado</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="brinquinho-card p-5">
+              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                Total no período
+              </p>
+              <p className="stat-number text-3xl mt-1" data-testid="proc-total">
+                {totalProcs}
+              </p>
+              <p className="text-xs text-[#7A726D] mt-1">
+                {formatDate(dateFrom)} → {formatDate(dateTo)}
+              </p>
+            </div>
+            <div className="brinquinho-card p-5">
+              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                Pacientes únicos
+              </p>
+              <p className="stat-number text-3xl mt-1">{uniquePatients}</p>
+            </div>
+            <div className="brinquinho-card p-5">
+              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                Tipo mais realizado
+              </p>
+              <p className="stat-number text-xl mt-1 truncate">
+                {procStats[0]?.name || "—"}
+              </p>
+              <p className="text-xs text-[#7A726D] mt-1">
+                {procStats[0]?.value || 0} atendimento(s)
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="brinquinho-card p-6 lg:col-span-1">
+              <h3 className="font-heading text-lg font-semibold mb-4">
+                Distribuição
+              </h3>
+              {procStats.length === 0 ? (
+                <p className="text-sm text-[#7A726D] text-center py-10">
+                  Sem dados para os filtros selecionados.
+                </p>
+              ) : (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={procStats}
+                        dataKey="value"
+                        nameKey="name"
+                        outerRadius={80}
+                        innerRadius={40}
+                      >
+                        {procStats.map((_, i) => (
+                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+
+            <div className="brinquinho-card p-6 lg:col-span-2">
+              <h3 className="font-heading text-lg font-semibold mb-4">
+                Por tipo de procedimento
+              </h3>
+              {procStats.length === 0 ? (
+                <p className="text-sm text-[#7A726D] text-center py-10">
+                  Sem dados.
+                </p>
+              ) : (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={procStats} layout="vertical">
+                      <CartesianGrid stroke="#EBE8E3" strokeDasharray="3 3" />
+                      <XAxis type="number" tick={{ fontSize: 11, fill: "#7A726D" }} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={140}
+                        tick={{ fontSize: 11, fill: "#7A726D" }}
+                      />
+                      <Tooltip />
+                      <Bar dataKey="value" fill="#C97D63" radius={[0, 8, 8, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="brinquinho-card overflow-x-auto" data-testid="proc-table">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#FDFDF9] border-b border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
+                  <th className="py-3 px-4 text-left">Data</th>
+                  <th className="py-3 px-4 text-left">Procedimento</th>
+                  <th className="py-3 px-4 text-left">Paciente</th>
+                  <th className="py-3 px-4 text-left">Criança</th>
+                  <th className="py-3 px-4 text-left">Pós-venda</th>
+                  <th className="py-3 px-4 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAppts.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-10 text-center text-[#7A726D]">
+                      Nenhum procedimento encontrado para esses filtros.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredAppts
+                    .slice()
+                    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+                    .map((a) => (
+                      <tr
+                        key={a.id}
+                        className="border-b border-[#EBE8E3] hover:bg-[#FDFDF9]/60"
+                      >
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <CalendarIcon
+                              className="w-3.5 h-3.5 text-[#C97D63]"
+                              strokeWidth={1.5}
+                            />
+                            <span>{formatDate(a.date)}</span>
+                            <span className="text-xs text-[#7A726D]">{a.time}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-medium">{a.procedure_type}</td>
+                        <td className="py-3 px-4">{a.patient_name}</td>
+                        <td className="py-3 px-4 text-[#7A726D]">
+                          {a.child_name || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-[#C97D63] font-medium">
+                          {formatDate(a.post_sale_date)}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
+                              a.status === "realizado"
+                                ? "bg-[#E4EDDF] text-[#5C7053] border-[#C8DABF]"
+                                : a.status === "cancelado"
+                                ? "bg-[#FBE7E7] text-[#D06B6B] border-[#F0CBCB]"
+                                : "bg-[#F2E4DF] text-[#C97D63] border-[#E8CFC1]"
+                            }`}
+                          >
+                            {a.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
                 )}
               </tbody>
             </table>
