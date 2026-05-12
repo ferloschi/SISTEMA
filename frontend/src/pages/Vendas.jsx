@@ -41,21 +41,24 @@ export default function Vendas() {
   const [products, setProducts] = useState([]);
   const [patients, setPatients] = useState([]);
   const [methods, setMethods] = useState([]);
+  const [procedures, setProcedures] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [monthFilter, setMonthFilter] = useState(todayISO().slice(0, 7));
 
   const load = async () => {
-    const [s, p, pat, pm] = await Promise.all([
+    const [s, p, pat, pm, pr] = await Promise.all([
       api.get("/sales", { params: { month: monthFilter || undefined } }),
       api.get("/products"),
       api.get("/patients"),
       api.get("/payment-methods"),
+      api.get("/procedures"),
     ]);
     setSales(s.data);
     setProducts(p.data);
     setPatients(pat.data);
     setMethods(pm.data);
+    setProcedures(pr.data);
   };
 
   useEffect(() => {
@@ -119,6 +122,37 @@ export default function Vendas() {
         child_name: pt.child_name || "",
       }));
     }
+  };
+
+  const pickProcedure = (id) => {
+    const pr = procedures.find((p) => p.id === id);
+    if (!pr) return;
+    // Map procedure items into sale items. Use final_price split or per-item price.
+    // Strategy: keep each procedure item as a sale line with cost from procedure
+    // and unit_price = 0 except first item which carries the total price.
+    // Simpler: one combined line with name "Procedimento: X" + the kit items
+    // We use a transparent approach: each kit item appears as a line with cost,
+    // and unit_price = 0; then add one line "Procedimento {name}" with the final_price.
+    const kitLines = pr.items.map((it) => ({
+      product_id: it.product_id || "",
+      name: it.name,
+      qty: Number(it.qty) || 1,
+      unit_price: 0,
+      unit_cost: Number(it.unit_cost) || 0,
+    }));
+    kitLines.push({
+      product_id: "",
+      name: `Procedimento: ${pr.name}`,
+      qty: 1,
+      unit_price: Number(pr.final_price) || 0,
+      unit_cost: 0,
+    });
+    setForm((f) => ({
+      ...f,
+      items: kitLines,
+      description: f.description || pr.name,
+    }));
+    toast.success(`Kit "${pr.name}" carregado`);
   };
 
   const livePreview = useMemo(() => {
@@ -289,6 +323,30 @@ export default function Vendas() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#F2E4DF]/30 border border-dashed border-[#E8CFC1]">
+                <Label className="text-[#C97D63]">
+                  Carregar kit de procedimento (opcional)
+                </Label>
+                <Select onValueChange={pickProcedure}>
+                  <SelectTrigger data-testid="form-procedure-picker" className="mt-1 bg-white">
+                    <SelectValue placeholder="— Selecione um procedimento pré-precificado —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {procedures
+                      .filter((p) => p.active)
+                      .map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name} — {formatBRL(p.final_price)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-[#7A726D] mt-1">
+                  Os insumos (algodão, agulha etc.) serão adicionados como itens com seus
+                  custos. Você pode editar tudo antes de salvar.
+                </p>
               </div>
 
               <div>

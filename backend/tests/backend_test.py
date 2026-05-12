@@ -423,3 +423,141 @@ class TestReports:
         r = client.get(f"{API}/reports/monthly")
         # Query year is required
         assert r.status_code in (400, 422)
+
+
+# ---------- Procedures (Precificação) ----------
+class TestProcedures:
+    proc_id = None
+
+    def test_create_procedure_with_calculations(self, client):
+        # items_cost = 2*10 + 1*5 + 3*2 = 31
+        # indirect_value = 31 * 20 / 100 = 6.2
+        # total_cost = 37.2
+        # margin_value = 37.2 * 100 / 100 = 37.2
+        # suggested_price = 74.4
+        # final_price = 74.4 (manual_price = 0)
+        payload = {
+            "name": "TEST_Perfuracao_Premium",
+            "description": "TEST procedure",
+            "items": [
+                {"name": "Joia Ouro", "qty": 2, "unit_cost": 10.0},
+                {"name": "Algodao", "qty": 1, "unit_cost": 5.0},
+                {"name": "Agulha", "qty": 3, "unit_cost": 2.0},
+            ],
+            "indirect_cost_pct": 20.0,
+            "margin_pct": 100.0,
+            "manual_price": 0.0,
+        }
+        r = client.post(f"{API}/procedures", json=payload)
+        assert r.status_code == 200, r.text
+        p = r.json()
+        # No _id leakage
+        assert "_id" not in p
+        assert p["name"] == "TEST_Perfuracao_Premium"
+        assert p["items_cost"] == 31.0
+        assert p["indirect_value"] == 6.2
+        assert p["total_cost"] == 37.2
+        assert p["margin_value"] == 37.2
+        assert p["suggested_price"] == 74.4
+        assert p["final_price"] == 74.4
+        TestProcedures.proc_id = p["id"]
+
+    def test_manual_price_overrides_suggested(self, client):
+        payload = {
+            "name": "TEST_Manual_Override",
+            "items": [{"name": "Joia", "qty": 1, "unit_cost": 50.0}],
+            "indirect_cost_pct": 10.0,
+            "margin_pct": 50.0,
+            "manual_price": 999.99,
+        }
+        r = client.post(f"{API}/procedures", json=payload)
+        assert r.status_code == 200
+        p = r.json()
+        # items_cost=50, indirect=5, total=55, margin=27.5, suggested=82.5
+        assert p["items_cost"] == 50.0
+        assert p["indirect_value"] == 5.0
+        assert p["total_cost"] == 55.0
+        assert p["margin_value"] == 27.5
+        assert p["suggested_price"] == 82.5
+        # final must use manual price
+        assert p["final_price"] == 999.99
+        # cleanup
+        client.delete(f"{API}/procedures/{p['id']}")
+
+    def test_list_procedures_returns_calculated_fields(self, client):
+        r = client.get(f"{API}/procedures")
+        assert r.status_code == 200
+        items = r.json()
+        assert isinstance(items, list)
+        found = next((x for x in items if x["id"] == TestProcedures.proc_id), None)
+        assert found is not None
+        for key in ["items_cost", "indirect_value", "total_cost",
+                    "margin_value", "suggested_price", "final_price"]:
+            assert key in found, f"Missing calculated field: {key}"
+        assert "_id" not in found
+        assert found["final_price"] == 74.4
+
+    def test_update_procedure_recalculates(self, client):
+        # Change items and percentages: items_cost = 1*100 = 100
+        # indirect = 100 * 50/100 = 50, total = 150, margin = 150 * 200/100 = 300
+        # suggested = 450, manual=0 -> final = 450
+        payload = {
+            "name": "TEST_Perfuracao_Premium_UPD",
+            "items": [{"name": "Joia Premium", "qty": 1, "unit_cost": 100.0}],
+            "indirect_cost_pct": 50.0,
+            "margin_pct": 200.0,
+            "manual_price": 0.0,
+        }
+        r = client.put(f"{API}/procedures/{TestProcedures.proc_id}", json=payload)
+        assert r.status_code == 200
+        p = r.json()
+        assert p["name"] == "TEST_Perfuracao_Premium_UPD"
+        assert p["items_cost"] == 100.0
+        assert p["indirect_value"] == 50.0
+        assert p["total_cost"] == 150.0
+        assert p["margin_value"] == 300.0
+        assert p["suggested_price"] == 450.0
+        assert p["final_price"] == 450.0
+        assert "_id" not in p
+
+        # Verify persistence via GET list
+        items = client.get(f"{API}/procedures").json()
+        found = next(x for x in items if x["id"] == TestProcedures.proc_id)
+        assert found["name"] == "TEST_Perfuracao_Premium_UPD"
+        assert found["final_price"] == 450.0
+
+    def test_update_404(self, client):
+        r = client.put(f"{API}/procedures/nonexistent-id", json={
+            "name": "X", "items": [], "indirect_cost_pct": 0, "margin_pct": 0, "manual_price": 0
+        })
+        assert r.status_code == 404
+
+    def test_delete_procedure(self, client):
+        r = client.delete(f"{API}/procedures/{TestProcedures.proc_id}")
+        assert r.status_code == 200
+        # Verify gone
+        items = client.get(f"{API}/procedures").json()
+        assert all(x["id"] != TestProcedures.proc_id for x in items)
+
+    def test_delete_404(self, client):
+        r = client.delete(f"{API}/procedures/nonexistent-id")
+        assert r.status_code == 404
+
+    def test_empty_items_zero_costs(self, client):
+        payload = {
+            "name": "TEST_Empty_Items",
+            "items": [],
+            "indirect_cost_pct": 20.0,
+            "margin_pct": 100.0,
+            "manual_price": 0.0,
+        }
+        r = client.post(f"{API}/procedures", json=payload)
+        assert r.status_code == 200
+        p = r.json()
+        assert p["items_cost"] == 0.0
+        assert p["indirect_value"] == 0.0
+        assert p["total_cost"] == 0.0
+        assert p["suggested_price"] == 0.0
+        assert p["final_price"] == 0.0
+        client.delete(f"{API}/procedures/{p['id']}")
+

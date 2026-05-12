@@ -6,12 +6,14 @@ import {
   Users,
   ShoppingCart,
   Wallet,
+  Calculator,
   Sparkles,
 } from "lucide-react";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, testid: "sidebar-nav-dashboard" },
   { to: "/estoque", label: "Estoque", icon: Package, testid: "sidebar-nav-estoque" },
+  { to: "/precificacao", label: "Precificação", icon: Calculator, testid: "sidebar-nav-precificacao" },
   { to: "/agendamento", label: "Agendamento", icon: CalendarDays, testid: "sidebar-nav-agendamento" },
   { to: "/pacientes", label: "Pacientes", icon: Users, testid: "sidebar-nav-pacientes" },
   { to: "/vendas", label: "Vendas", icon: ShoppingCart, testid: "sidebar-nav-vendas" },
@@ -21,6 +23,7 @@ const navItems = [
 const pageTitle = {
   "/dashboard": "Visão Geral",
   "/estoque": "Controle de Estoque",
+  "/precificacao": "Precificação de Procedimentos",
   "/agendamento": "Agendamento",
   "/pacientes": "Pacientes",
   "/vendas": "Vendas",

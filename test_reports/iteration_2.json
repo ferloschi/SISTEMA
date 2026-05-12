@@ -1,0 +1,36 @@
+{
+  "summary": "Backend testing for Iteration 2 (Precificação/Procedures module). Added 8 new pytest cases under TestProcedures covering POST/GET/PUT/DELETE /api/procedures, calculation correctness (items_cost, indirect_value, total_cost, margin_value, suggested_price, final_price), manual_price override behavior, empty items edge case, _id leak check, and 404 paths. Regression: all 27 previous tests still pass. Total: 35/35 passing (100%).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST/PUT /api/procedures", "issue": "No validation that indirect_cost_pct and margin_pct are non-negative; negative values would yield negative prices."},
+      {"endpoint": "POST /api/procedures", "issue": "No uniqueness/sanity check on procedure name; duplicates allowed."},
+      {"endpoint": "PUT /api/procedures/{id}", "issue": "Body uses ProcedureCreate (no partial-update / PATCH support). Caller must always re-send full payload including items array."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Validate indirect_cost_pct >= 0 and margin_pct >= 0 in ProcedureCreate.",
+    "(Optional) Integration test of Sales-from-Procedure flow (when frontend loads procedure items as sale lines) once frontend is in scope.",
+    "(Optional) Consider exposing per-item subtotal in enrich_procedure for richer UI rendering."
+  ],
+  "critical_code_review_comments": [
+    "enrich_procedure correctly removes nothing extra but server.py POST /api/procedures uses doc.pop('_id', None) after insert_one — good fix preventing ObjectId leak (validated by test_create_procedure_with_calculations and test_list_procedures_returns_calculated_fields).",
+    "GET /api/procedures and PUT use projection {'_id': 0} consistently — good.",
+    "DRY: enrich_procedure is reused by list/create/update — good.",
+    "Procedures endpoints do NOT use response_model (unlike products/patients) — intentional because computed fields are added at runtime. Acceptable but consider a ProcedureRead model for OpenAPI clarity.",
+    "No integration yet between /api/sales and /api/procedures: frontend is expected to expand procedure items into SaleItem array client-side. Backend has no /api/sales/from-procedure helper — by design per the problem statement, but worth confirming."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (35/35)", "frontend": "N/A"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "TEST_-prefixed procedures are created and then deleted in each test. Pre-existing 'Perfuração Baby' procedure is not touched. All cleanup happens within test methods.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All backend endpoints (products, patients, appointments, sales, payment-methods, dashboard, reminders, reports/monthly, procedures) are fully tested in /app/backend/tests/backend_test.py. Re-run with: pytest /app/backend/tests/backend_test.py -v. The new TestProcedures class verifies the precificação math exhaustively. No regressions introduced.",
+  "rca of the issue": "N/A — no bugs found. The previously reported bug (MongoDB _id leak in POST /api/procedures) is now fixed via doc.pop('_id', None) after insert_one and is verified by explicit '_id' not in response asserts in 3 procedure tests."
+}

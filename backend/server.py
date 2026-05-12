@@ -151,6 +151,36 @@ class SaleCreate(BaseModel):
     appointment_id: Optional[str] = ""
 
 
+class ProcedureItem(BaseModel):
+    product_id: Optional[str] = ""
+    name: str
+    qty: float = 1.0
+    unit_cost: float = 0.0
+
+
+class Procedure(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: Optional[str] = ""
+    items: List[ProcedureItem] = []
+    indirect_cost_pct: float = 20.0
+    margin_pct: float = 100.0
+    manual_price: float = 0.0  # 0 = use suggested
+    active: bool = True
+    created_at: str = Field(default_factory=now_utc_iso)
+
+
+class ProcedureCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    items: List[ProcedureItem] = []
+    indirect_cost_pct: float = 20.0
+    margin_pct: float = 100.0
+    manual_price: float = 0.0
+    active: bool = True
+
+
 class PaymentMethod(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -373,6 +403,63 @@ async def delete_payment_method(pm_id: str):
     res = await db.payment_methods.delete_one({"id": pm_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Forma de pagamento não encontrada")
+    return {"ok": True}
+
+
+# =====================
+# Procedures (Precificação)
+# =====================
+def enrich_procedure(p: dict) -> dict:
+    items = p.get("items", [])
+    items_cost = sum(float(i.get("qty", 0)) * float(i.get("unit_cost", 0)) for i in items)
+    indirect_pct = float(p.get("indirect_cost_pct", 0))
+    margin_pct = float(p.get("margin_pct", 0))
+    indirect_value = round(items_cost * indirect_pct / 100, 2)
+    total_cost = round(items_cost + indirect_value, 2)
+    margin_value = round(total_cost * margin_pct / 100, 2)
+    suggested_price = round(total_cost + margin_value, 2)
+    manual = float(p.get("manual_price", 0) or 0)
+    final_price = manual if manual > 0 else suggested_price
+    p["items_cost"] = round(items_cost, 2)
+    p["indirect_value"] = indirect_value
+    p["total_cost"] = total_cost
+    p["margin_value"] = margin_value
+    p["suggested_price"] = suggested_price
+    p["final_price"] = round(final_price, 2)
+    return p
+
+
+@api_router.get("/procedures")
+async def list_procedures():
+    items = await db.procedures.find({}, {"_id": 0}).sort("name", 1).to_list(1000)
+    return [enrich_procedure(p) for p in items]
+
+
+@api_router.post("/procedures")
+async def create_procedure(payload: ProcedureCreate):
+    proc = Procedure(**payload.model_dump())
+    doc = proc.model_dump()
+    await db.procedures.insert_one(doc)
+    doc.pop("_id", None)
+    return enrich_procedure(doc)
+
+
+@api_router.put("/procedures/{proc_id}")
+async def update_procedure(proc_id: str, payload: ProcedureCreate):
+    existing = await db.procedures.find_one({"id": proc_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Procedimento não encontrado")
+    data = payload.model_dump()
+    existing.update(data)
+    await db.procedures.update_one({"id": proc_id}, {"$set": data})
+    return enrich_procedure(existing)
+
+
+@api_router.delete("/procedures/{proc_id}")
+async def delete_procedure(proc_id: str):
+    res = await db.procedures.delete_one({"id": proc_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Procedimento não encontrado")
     return {"ok": True}
 
 

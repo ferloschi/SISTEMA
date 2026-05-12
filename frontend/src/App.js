@@ -8,6 +8,7 @@ import Agendamento from "@/pages/Agendamento";
 import Pacientes from "@/pages/Pacientes";
 import Vendas from "@/pages/Vendas";
 import Gestao from "@/pages/Gestao";
+import Precificacao from "@/pages/Precificacao";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/estoque" element={<Estoque />} />
+            <Route path="/precificacao" element={<Precificacao />} />
             <Route path="/agendamento" element={<Agendamento />} />
             <Route path="/pacientes" element={<Pacientes />} />
             <Route path="/vendas" element={<Vendas />} />
