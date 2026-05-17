@@ -33,13 +33,15 @@ class Product(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     sku: str
     name: str
-    category: str = "Geral"  # Brinco, Material, Insumo, Procedimento, Outros
+    category: str = "Outros"
+    insumo: Optional[str] = ""
     material: Optional[str] = ""
+    modelo: Optional[str] = ""
     size: Optional[str] = ""
     color: Optional[str] = ""
     purchase_value: float = 0.0
     sale_value: float = 0.0
-    indirect_cost_pct: float = 20.0  # %
+    indirect_cost_pct: float = 20.0  # legacy, kept for compatibility
     stock_qty: int = 0
     min_stock: int = 0
     notes: Optional[str] = ""
@@ -49,8 +51,10 @@ class Product(BaseModel):
 class ProductCreate(BaseModel):
     sku: Optional[str] = None
     name: str
-    category: Optional[str] = "Geral"
+    category: Optional[str] = "Outros"
+    insumo: Optional[str] = ""
     material: Optional[str] = ""
+    modelo: Optional[str] = ""
     size: Optional[str] = ""
     color: Optional[str] = ""
     purchase_value: float = 0.0

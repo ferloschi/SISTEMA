@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { api, formatBRL, PRODUCT_CATEGORIES } from "@/lib/api";
+import {
+  api,
+  formatBRL,
+  PRODUCT_CATEGORIES,
+  INSUMO_OPTIONS,
+  MATERIAL_OPTIONS,
+  MODELO_OPTIONS,
+  SIZE_OPTIONS,
+  COR_OPTIONS,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,17 +34,39 @@ import { Plus, Pencil, Trash2, Search, AlertTriangle } from "lucide-react";
 const emptyForm = {
   sku: "",
   name: "",
-  category: "Material",
+  category: "Brinco",
+  insumo: "",
   material: "",
+  modelo: "",
   size: "",
   color: "",
   purchase_value: 0,
   sale_value: 0,
-  indirect_cost_pct: 20,
   stock_qty: 0,
   min_stock: 0,
   notes: "",
 };
+
+const NONE = "__none__";
+
+const SelectOrNone = ({ value, onValueChange, options, placeholder, testid }) => (
+  <Select
+    value={value || NONE}
+    onValueChange={(v) => onValueChange(v === NONE ? "" : v)}
+  >
+    <SelectTrigger data-testid={testid}>
+      <SelectValue placeholder={placeholder} />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value={NONE}>— Nenhum —</SelectItem>
+      {options.map((o) => (
+        <SelectItem key={o} value={o}>
+          {o}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+);
 
 export default function Estoque() {
   const [items, setItems] = useState([]);
@@ -75,7 +106,6 @@ export default function Estoque() {
       ...form,
       purchase_value: Number(form.purchase_value) || 0,
       sale_value: Number(form.sale_value) || 0,
-      indirect_cost_pct: Number(form.indirect_cost_pct) || 0,
       stock_qty: parseInt(form.stock_qty) || 0,
       min_stock: parseInt(form.min_stock) || 0,
     };
@@ -89,7 +119,7 @@ export default function Estoque() {
       }
       setOpen(false);
       load();
-    } catch (e) {
+    } catch {
       toast.error("Erro ao salvar produto");
     }
   };
@@ -125,7 +155,7 @@ export default function Estoque() {
               Novo produto
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-heading">
                 {editing ? "Editar produto" : "Novo produto"}
@@ -168,24 +198,53 @@ export default function Estoque() {
                 </Select>
               </div>
               <div>
+                <Label>Insumo</Label>
+                <SelectOrNone
+                  value={form.insumo}
+                  onValueChange={(v) => setForm({ ...form, insumo: v })}
+                  options={INSUMO_OPTIONS}
+                  placeholder="Selecione (opcional)"
+                  testid="form-insumo"
+                />
+              </div>
+              <div>
                 <Label>Material</Label>
-                <Input
+                <SelectOrNone
                   value={form.material}
-                  onChange={(e) => setForm({ ...form, material: e.target.value })}
+                  onValueChange={(v) => setForm({ ...form, material: v })}
+                  options={MATERIAL_OPTIONS}
+                  placeholder="Selecione (opcional)"
+                  testid="form-material"
+                />
+              </div>
+              <div>
+                <Label>Modelo</Label>
+                <SelectOrNone
+                  value={form.modelo}
+                  onValueChange={(v) => setForm({ ...form, modelo: v })}
+                  options={MODELO_OPTIONS}
+                  placeholder="Selecione (opcional)"
+                  testid="form-modelo"
                 />
               </div>
               <div>
                 <Label>Tamanho</Label>
-                <Input
+                <SelectOrNone
                   value={form.size}
-                  onChange={(e) => setForm({ ...form, size: e.target.value })}
+                  onValueChange={(v) => setForm({ ...form, size: v })}
+                  options={SIZE_OPTIONS}
+                  placeholder="Selecione (opcional)"
+                  testid="form-size"
                 />
               </div>
               <div>
                 <Label>Cor</Label>
-                <Input
+                <SelectOrNone
                   value={form.color}
-                  onChange={(e) => setForm({ ...form, color: e.target.value })}
+                  onValueChange={(v) => setForm({ ...form, color: v })}
+                  options={COR_OPTIONS}
+                  placeholder="Selecione (opcional)"
+                  testid="form-color"
                 />
               </div>
               <div>
@@ -206,15 +265,6 @@ export default function Estoque() {
                   step="0.01"
                   value={form.sale_value}
                   onChange={(e) => setForm({ ...form, sale_value: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Custos Indiretos (%)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={form.indirect_cost_pct}
-                  onChange={(e) => setForm({ ...form, indirect_cost_pct: e.target.value })}
                 />
               </div>
               <div>
@@ -263,13 +313,14 @@ export default function Estoque() {
         </Dialog>
       </div>
 
-      <div className="brinquinho-card overflow-hidden" data-testid="products-table">
+      <div className="brinquinho-card overflow-x-auto" data-testid="products-table">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#FDFDF9] border-b border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
               <th className="py-3 px-4 text-left">SKU</th>
               <th className="py-3 px-4 text-left">Nome</th>
               <th className="py-3 px-4 text-left">Categoria</th>
+              <th className="py-3 px-4 text-left">Detalhes</th>
               <th className="py-3 px-4 text-right">Compra</th>
               <th className="py-3 px-4 text-right">Venda</th>
               <th className="py-3 px-4 text-right">Estoque</th>
@@ -279,13 +330,20 @@ export default function Estoque() {
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-[#7A726D]">
+                <td colSpan={8} className="py-10 text-center text-[#7A726D]">
                   Nenhum produto cadastrado.
                 </td>
               </tr>
             ) : (
               items.map((p) => {
                 const low = p.stock_qty <= p.min_stock;
+                const details = [
+                  p.insumo && `Insumo: ${p.insumo}`,
+                  p.material,
+                  p.modelo,
+                  p.size,
+                  p.color,
+                ].filter(Boolean);
                 return (
                   <tr
                     key={p.id}
@@ -293,16 +351,14 @@ export default function Estoque() {
                     data-testid={`product-row-${p.id}`}
                   >
                     <td className="py-3 px-4 font-mono text-xs text-[#7A726D]">{p.sku}</td>
-                    <td className="py-3 px-4">
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-xs text-[#7A726D]">
-                        {[p.material, p.size, p.color].filter(Boolean).join(" · ")}
-                      </div>
-                    </td>
+                    <td className="py-3 px-4 font-medium">{p.name}</td>
                     <td className="py-3 px-4">
                       <span className="bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1] px-2 py-1 rounded-full text-xs font-medium">
                         {p.category}
                       </span>
+                    </td>
+                    <td className="py-3 px-4 text-xs text-[#7A726D]">
+                      {details.join(" · ") || "—"}
                     </td>
                     <td className="py-3 px-4 text-right">{formatBRL(p.purchase_value)}</td>
                     <td className="py-3 px-4 text-right font-medium">

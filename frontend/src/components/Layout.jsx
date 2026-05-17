@@ -3,7 +3,7 @@ import {
   LayoutDashboard,
   Package,
   CalendarDays,
-  Users,
+  ClipboardList,
   ShoppingCart,
   Wallet,
   Calculator,
@@ -15,7 +15,7 @@ const navItems = [
   { to: "/estoque", label: "Estoque", icon: Package, testid: "sidebar-nav-estoque" },
   { to: "/precificacao", label: "Precificação", icon: Calculator, testid: "sidebar-nav-precificacao" },
   { to: "/agendamento", label: "Agendamento", icon: CalendarDays, testid: "sidebar-nav-agendamento" },
-  { to: "/pacientes", label: "Pacientes", icon: Users, testid: "sidebar-nav-pacientes" },
+  { to: "/prontuarios", label: "Prontuários", icon: ClipboardList, testid: "sidebar-nav-prontuarios" },
   { to: "/vendas", label: "Vendas", icon: ShoppingCart, testid: "sidebar-nav-vendas" },
   { to: "/gestao", label: "Gestão", icon: Wallet, testid: "sidebar-nav-gestao" },
 ];
@@ -25,7 +25,7 @@ const pageTitle = {
   "/estoque": "Controle de Estoque",
   "/precificacao": "Precificação de Procedimentos",
   "/agendamento": "Agendamento",
-  "/pacientes": "Pacientes",
+  "/prontuarios": "Prontuários",
   "/vendas": "Vendas",
   "/gestao": "Gestão Financeira",
 };

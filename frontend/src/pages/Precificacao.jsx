@@ -216,13 +216,6 @@ export default function Precificacao() {
                     />
                   )}
                 </div>
-                <div>
-                  <Label>Descrição</Label>
-                  <Input
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  />
-                </div>
               </div>
 
               <div>
