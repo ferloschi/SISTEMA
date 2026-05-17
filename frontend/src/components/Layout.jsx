@@ -4,6 +4,7 @@ import {
   Package,
   ClipboardList,
   Wallet,
+  TrendingUp,
   Calculator,
   Sparkles,
 } from "lucide-react";
@@ -13,7 +14,8 @@ const navItems = [
   { to: "/estoque", label: "Estoque", icon: Package, testid: "sidebar-nav-estoque" },
   { to: "/precificacao", label: "Precificação", icon: Calculator, testid: "sidebar-nav-precificacao" },
   { to: "/prontuario", label: "Prontuário", icon: ClipboardList, testid: "sidebar-nav-prontuario" },
-  { to: "/gestao", label: "Gestão", icon: Wallet, testid: "sidebar-nav-gestao" },
+  { to: "/gestao", label: "Gestão Administrativa", icon: Wallet, testid: "sidebar-nav-gestao" },
+  { to: "/financeiro", label: "Gestão Financeira", icon: TrendingUp, testid: "sidebar-nav-financeiro" },
 ];
 
 const pageTitle = {
@@ -24,7 +26,8 @@ const pageTitle = {
   "/prontuarios": "Prontuário",
   "/agendamento": "Agendamento",
   "/vendas": "Vendas",
-  "/gestao": "Gestão Financeira",
+  "/gestao": "Gestão Administrativa",
+  "/financeiro": "Gestão Financeira",
 };
 
 export default function Layout() {

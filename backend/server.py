@@ -155,8 +155,10 @@ class Sale(BaseModel):
     net_value: float = 0.0  # gross - fee
     total_cost: float = 0.0
     profit: float = 0.0  # gross - cost - fee
-    receive_date: Optional[str] = ""  # date+45 for cards optional; here set = sale_date by default
-    post_sale_date: Optional[str] = ""  # sale_date + 45 days
+    installments: int = 1
+    receive_schedule: List[dict] = []  # [{installment, date, value}]
+    receive_date: Optional[str] = ""
+    post_sale_date: Optional[str] = ""
     appointment_id: Optional[str] = ""
     created_at: str = Field(default_factory=now_utc_iso)
 
@@ -169,7 +171,8 @@ class SaleCreate(BaseModel):
     items: List[SaleItem] = []
     description: Optional[str] = ""
     payment_method_id: str
-    card_fee_pct: Optional[float] = None  # manual override; None = use default from method
+    card_fee_pct: Optional[float] = None
+    installments: Optional[int] = 1
     appointment_id: Optional[str] = ""
 
 
@@ -530,7 +533,6 @@ async def compute_sale(payload: SaleCreate) -> Sale:
     items = [i if isinstance(i, SaleItem) else SaleItem(**i) for i in payload.items]
     gross = sum(i.qty * i.unit_price for i in items)
     cost = sum(i.qty * i.unit_cost for i in items)
-    # Allow manual fee override (oscillating card fees). If None, use method default.
     if payload.card_fee_pct is not None:
         fee_pct = float(payload.card_fee_pct)
     else:
@@ -539,7 +541,30 @@ async def compute_sale(payload: SaleCreate) -> Sale:
     net_value = round(gross - fee_amount, 2)
     profit = round(gross - cost - fee_amount, 2)
     post_sale = compute_post_sale_date(payload.sale_date)
-    receive_date = (datetime.strptime(payload.sale_date, "%Y-%m-%d").date() + timedelta(days=30)).isoformat() if pm.get("is_card") else payload.sale_date
+
+    installments = max(1, int(payload.installments or 1))
+    # Build receivable schedule for card payments
+    schedule = []
+    sale_date_obj = datetime.strptime(payload.sale_date, "%Y-%m-%d").date()
+    if pm.get("is_card"):
+        per = round(net_value / installments, 2)
+        accumulated = 0.0
+        for i in range(installments):
+            recv_date = sale_date_obj + timedelta(days=30 * (i + 1))
+            if i < installments - 1:
+                val = per
+                accumulated += val
+            else:
+                val = round(net_value - accumulated, 2)
+            schedule.append({
+                "installment": i + 1,
+                "date": recv_date.isoformat(),
+                "value": val,
+            })
+        receive_date = schedule[0]["date"] if schedule else payload.sale_date
+    else:
+        receive_date = payload.sale_date
+
     sale = Sale(
         sale_date=payload.sale_date,
         patient_id=payload.patient_id or "",
@@ -555,6 +580,8 @@ async def compute_sale(payload: SaleCreate) -> Sale:
         net_value=net_value,
         total_cost=round(cost, 2),
         profit=profit,
+        installments=installments,
+        receive_schedule=schedule,
         receive_date=receive_date,
         post_sale_date=post_sale,
         appointment_id=payload.appointment_id or "",
@@ -703,6 +730,84 @@ async def reports_monthly(year: int = Query(..., description="Year, e.g. 2026"))
         "profit": round(r.get("profit", 0), 2),
         "count": r.get("count", 0),
     } for r in rows]
+
+
+# =====================
+# Finance (Gestão Financeira)
+# =====================
+def bucket_for_sale(s: dict) -> str:
+    """Classify a sale into: dinheiro, pix, debito, cartao_parcelado, outros."""
+    name = (s.get("payment_method_name") or "").lower()
+    installments = int(s.get("installments", 1) or 1)
+    if "dinheiro" in name:
+        return "dinheiro"
+    if "pix" in name:
+        return "pix"
+    if "débito" in name or "debito" in name:
+        return "debito"
+    if (
+        installments > 1
+        or "crédito" in name
+        or "credito" in name
+        or "cartão" in name
+        or "cartao" in name
+    ):
+        return "cartao_parcelado"
+    return "outros"
+
+
+@api_router.get("/finance/summary")
+async def finance_summary(month: Optional[str] = None, year: Optional[int] = None):
+    """Aggregated payment values. Provide month=YYYY-MM or year=YYYY."""
+    query = {}
+    if month:
+        query["sale_date"] = {"$regex": f"^{month}"}
+    elif year:
+        query["sale_date"] = {"$regex": f"^{year}-"}
+    sales = await db.sales.find(query, {"_id": 0}).to_list(10000)
+    buckets = {"dinheiro": 0.0, "pix": 0.0, "debito": 0.0, "cartao_parcelado": 0.0, "outros": 0.0}
+    counts = {k: 0 for k in buckets}
+    for s in sales:
+        b = bucket_for_sale(s)
+        buckets[b] += s.get("gross_value", 0)
+        counts[b] += 1
+    total = sum(buckets.values())
+    return {
+        "scope": {"month": month, "year": year},
+        "buckets": {k: round(v, 2) for k, v in buckets.items()},
+        "counts": counts,
+        "total": round(total, 2),
+        "sales_count": len(sales),
+    }
+
+
+@api_router.get("/finance/card-sales")
+async def finance_card_sales(month: Optional[str] = None):
+    """List card-payment sales with installment schedules."""
+    query = {}
+    if month:
+        query["sale_date"] = {"$regex": f"^{month}"}
+    sales = await db.sales.find(query, {"_id": 0}).sort("sale_date", -1).to_list(5000)
+    # only card sales
+    card_sales_list = [s for s in sales if bucket_for_sale(s) in ("debito", "cartao_parcelado")]
+    return card_sales_list
+
+
+@api_router.get("/finance/receivables")
+async def finance_receivables(month: Optional[str] = None):
+    """Receivables expected per month (from schedules)."""
+    sales = await db.sales.find({}, {"_id": 0}).to_list(10000)
+    by_month: dict[str, float] = {}
+    for s in sales:
+        for r in s.get("receive_schedule", []) or []:
+            ym = (r.get("date") or "")[:7]
+            if not ym:
+                continue
+            by_month[ym] = by_month.get(ym, 0) + float(r.get("value", 0))
+    rows = [{"month": k, "value": round(v, 2)} for k, v in sorted(by_month.items())]
+    if month:
+        rows = [r for r in rows if r["month"] == month]
+    return rows
 
 
 @api_router.get("/")

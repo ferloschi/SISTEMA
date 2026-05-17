@@ -65,6 +65,7 @@ const emptyProcForm = {
   manual_cost: "",
   payment_method_id: "",
   card_fee_pct: "",
+  installments: 1,
   avulsos: [],
 };
 
@@ -184,8 +185,12 @@ export default function Prontuario() {
       ...f,
       payment_method_id: id,
       card_fee_pct: m && m.is_card ? String(m.card_fee_pct) : "0",
+      installments: m && m.is_card ? f.installments || 1 : 1,
     }));
   };
+
+  const selectedMethod = methods.find((m) => m.id === procForm.payment_method_id);
+  const isCardPayment = !!(selectedMethod && selectedMethod.is_card);
 
   const addAvulso = () =>
     setProcForm((f) => ({ ...f, avulsos: [...f.avulsos, { ...emptyAvulso }] }));
@@ -231,8 +236,28 @@ export default function Prontuario() {
     const feePct = Number(procForm.card_fee_pct) || 0;
     const fee = (gross * feePct) / 100;
     const profit = gross - cost - fee;
-    return { procValue, procCost, avulsosValue, avulsosCost, gross, cost, fee, profit, feePct };
-  }, [procForm]);
+    const inst = Math.max(1, parseInt(procForm.installments) || 1);
+    const net = gross - fee;
+    const perInstallment = inst > 0 ? net / inst : net;
+    // schedule preview
+    const schedule = [];
+    if (isCardPayment && procForm.procedure_date) {
+      const baseDate = new Date(procForm.procedure_date + "T12:00:00");
+      for (let i = 0; i < inst; i++) {
+        const d = new Date(baseDate);
+        d.setDate(d.getDate() + 30 * (i + 1));
+        const val = i < inst - 1 ? perInstallment : net - perInstallment * (inst - 1);
+        schedule.push({
+          date: d.toISOString().slice(0, 10),
+          value: Math.round(val * 100) / 100,
+        });
+      }
+    }
+    return {
+      procValue, procCost, avulsosValue, avulsosCost,
+      gross, cost, fee, profit, feePct, net, inst, perInstallment, schedule,
+    };
+  }, [procForm, isCardPayment]);
 
   const submitProcedure = async () => {
     if (!detailPatient) return;
@@ -285,6 +310,7 @@ export default function Prontuario() {
         payment_method_id: procForm.payment_method_id,
         card_fee_pct:
           procForm.card_fee_pct === "" ? null : Number(procForm.card_fee_pct),
+        installments: parseInt(procForm.installments) || 1,
         appointment_id: apptRes.data.id,
       });
 
@@ -664,7 +690,53 @@ export default function Prontuario() {
                         }
                       />
                     </div>
+                    {isCardPayment && (
+                      <div>
+                        <Label>Parcelas</Label>
+                        <Select
+                          value={String(procForm.installments)}
+                          onValueChange={(v) =>
+                            setProcForm({ ...procForm, installments: parseInt(v) })
+                          }
+                        >
+                          <SelectTrigger data-testid="proc-installments">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                              <SelectItem key={n} value={String(n)}>
+                                {n}x{" "}
+                                {n === 1
+                                  ? "(à vista)"
+                                  : `de ${formatBRL(preview.perInstallment)}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
+
+                  {isCardPayment && preview.schedule.length > 0 && (
+                    <div className="rounded-xl bg-white border border-[#E8CFC1] p-3">
+                      <p className="text-[11px] uppercase tracking-widest text-[#7A726D] mb-2">
+                        Cronograma de recebimento (líquido)
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {preview.schedule.map((r, idx) => (
+                          <div
+                            key={idx}
+                            className="text-xs px-2.5 py-1.5 rounded-lg bg-[#F2E4DF] border border-[#E8CFC1]"
+                          >
+                            <span className="text-[#7A726D]">{formatDate(r.date)}</span>
+                            <span className="ml-2 font-semibold text-[#C97D63]">
+                              {formatBRL(r.value)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Vendas avulsas */}
                   <div className="border-t border-[#EBE8E3] pt-4">

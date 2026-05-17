@@ -8,6 +8,7 @@ import Agendamento from "@/pages/Agendamento";
 import Pacientes from "@/pages/Prontuarios";
 import Vendas from "@/pages/Vendas";
 import Gestao from "@/pages/Gestao";
+import GestaoFinanceira from "@/pages/GestaoFinanceira";
 import Precificacao from "@/pages/Precificacao";
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
             <Route path="/prontuario" element={<Pacientes />} />
             <Route path="/vendas" element={<Vendas />} />
             <Route path="/gestao" element={<Gestao />} />
+            <Route path="/financeiro" element={<GestaoFinanceira />} />
           </Route>
         </Routes>
       </BrowserRouter>
