@@ -6,7 +6,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta, date
 
@@ -138,6 +138,17 @@ class SaleItem(BaseModel):
     unit_cost: float = 0.0
 
 
+class PaymentEntry(BaseModel):
+    method_id: str
+    method_name: str = ""
+    amount: float = 0.0
+    card_fee_pct: float = 0.0
+    fee_amount: float = 0.0
+    net_value: float = 0.0
+    installments: int = 1
+    receive_schedule: List[dict] = []
+
+
 class Sale(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -152,11 +163,12 @@ class Sale(BaseModel):
     payment_method_name: str = ""
     card_fee_pct: float = 0.0
     fee_amount: float = 0.0
-    net_value: float = 0.0  # gross - fee
+    net_value: float = 0.0
     total_cost: float = 0.0
-    profit: float = 0.0  # gross - cost - fee
+    profit: float = 0.0
     installments: int = 1
-    receive_schedule: List[dict] = []  # [{installment, date, value}]
+    receive_schedule: List[dict] = []
+    payments: List[PaymentEntry] = []  # mixed payments (if more than one method)
     receive_date: Optional[str] = ""
     post_sale_date: Optional[str] = ""
     appointment_id: Optional[str] = ""
@@ -170,9 +182,10 @@ class SaleCreate(BaseModel):
     child_name: Optional[str] = ""
     items: List[SaleItem] = []
     description: Optional[str] = ""
-    payment_method_id: str
+    payment_method_id: Optional[str] = ""
     card_fee_pct: Optional[float] = None
     installments: Optional[int] = 1
+    payments: Optional[List[Dict[str, Any]]] = None
     appointment_id: Optional[str] = ""
 
 
@@ -527,12 +540,102 @@ async def delete_procedure(proc_id: str):
 # Sales
 # =====================
 async def compute_sale(payload: SaleCreate) -> Sale:
-    pm = await db.payment_methods.find_one({"id": payload.payment_method_id}, {"_id": 0})
+    items = [i if isinstance(i, SaleItem) else SaleItem(**i) for i in payload.items]
+    cost = sum(i.qty * i.unit_cost for i in items)
+    items_gross = sum(i.qty * i.unit_price for i in items)
+    post_sale = compute_post_sale_date(payload.sale_date)
+    sale_date_obj = datetime.strptime(payload.sale_date, "%Y-%m-%d").date()
+
+    # ---- MIXED PAYMENT MODE ----
+    if payload.payments and len(payload.payments) > 0:
+        payment_entries: List[PaymentEntry] = []
+        merged_schedule: List[dict] = []
+        total_fee = 0.0
+        method_names_parts: List[str] = []
+        for p in payload.payments:
+            pm = await db.payment_methods.find_one(
+                {"id": p.get("method_id")}, {"_id": 0}
+            )
+            if not pm:
+                raise HTTPException(400, "Forma de pagamento inválida")
+            amount = float(p.get("amount", 0) or 0)
+            if "card_fee_pct" in p and p.get("card_fee_pct") is not None:
+                fee_pct = float(p["card_fee_pct"])
+            else:
+                fee_pct = pm.get("card_fee_pct", 0.0) if pm.get("is_card") else 0.0
+            fee_amt = round(amount * fee_pct / 100, 2)
+            net = round(amount - fee_amt, 2)
+            installments = max(1, int(p.get("installments", 1) or 1))
+            sched: List[dict] = []
+            if pm.get("is_card"):
+                per = round(net / installments, 2) if installments > 0 else net
+                acc = 0.0
+                for i in range(installments):
+                    recv = sale_date_obj + timedelta(days=30 * (i + 1))
+                    if i < installments - 1:
+                        val = per
+                        acc += val
+                    else:
+                        val = round(net - acc, 2)
+                    sched.append(
+                        {"installment": i + 1, "date": recv.isoformat(), "value": val}
+                    )
+                merged_schedule.extend(
+                    [{**s, "method": pm["name"]} for s in sched]
+                )
+            payment_entries.append(
+                PaymentEntry(
+                    method_id=pm["id"],
+                    method_name=pm["name"],
+                    amount=round(amount, 2),
+                    card_fee_pct=fee_pct,
+                    fee_amount=fee_amt,
+                    net_value=net,
+                    installments=installments,
+                    receive_schedule=sched,
+                )
+            )
+            total_fee += fee_amt
+            method_names_parts.append(f"{pm['name']} ({amount:.2f})")
+
+        gross = sum(p.amount for p in payment_entries)
+        net_value = round(gross - total_fee, 2)
+        profit = round(gross - cost - total_fee, 2)
+        method_name = " + ".join(method_names_parts)
+        return Sale(
+            sale_date=payload.sale_date,
+            patient_id=payload.patient_id or "",
+            patient_name=payload.patient_name or "",
+            child_name=payload.child_name or "",
+            items=items,
+            description=payload.description or "",
+            gross_value=round(gross, 2),
+            payment_method_id="",
+            payment_method_name=method_name,
+            card_fee_pct=0.0,
+            fee_amount=round(total_fee, 2),
+            net_value=net_value,
+            total_cost=round(cost, 2),
+            profit=profit,
+            installments=1,
+            receive_schedule=merged_schedule,
+            payments=payment_entries,
+            receive_date=merged_schedule[0]["date"]
+            if merged_schedule
+            else payload.sale_date,
+            post_sale_date=post_sale,
+            appointment_id=payload.appointment_id or "",
+        )
+
+    # ---- SINGLE PAYMENT MODE ----
+    if not payload.payment_method_id:
+        raise HTTPException(400, "Forma de pagamento obrigatória")
+    pm = await db.payment_methods.find_one(
+        {"id": payload.payment_method_id}, {"_id": 0}
+    )
     if not pm:
         raise HTTPException(400, "Forma de pagamento inválida")
-    items = [i if isinstance(i, SaleItem) else SaleItem(**i) for i in payload.items]
-    gross = sum(i.qty * i.unit_price for i in items)
-    cost = sum(i.qty * i.unit_cost for i in items)
+    gross = items_gross
     if payload.card_fee_pct is not None:
         fee_pct = float(payload.card_fee_pct)
     else:
@@ -540,12 +643,8 @@ async def compute_sale(payload: SaleCreate) -> Sale:
     fee_amount = round(gross * fee_pct / 100, 2)
     net_value = round(gross - fee_amount, 2)
     profit = round(gross - cost - fee_amount, 2)
-    post_sale = compute_post_sale_date(payload.sale_date)
-
     installments = max(1, int(payload.installments or 1))
-    # Build receivable schedule for card payments
     schedule = []
-    sale_date_obj = datetime.strptime(payload.sale_date, "%Y-%m-%d").date()
     if pm.get("is_card"):
         per = round(net_value / installments, 2)
         accumulated = 0.0
@@ -556,16 +655,14 @@ async def compute_sale(payload: SaleCreate) -> Sale:
                 accumulated += val
             else:
                 val = round(net_value - accumulated, 2)
-            schedule.append({
-                "installment": i + 1,
-                "date": recv_date.isoformat(),
-                "value": val,
-            })
+            schedule.append(
+                {"installment": i + 1, "date": recv_date.isoformat(), "value": val}
+            )
         receive_date = schedule[0]["date"] if schedule else payload.sale_date
     else:
         receive_date = payload.sale_date
 
-    sale = Sale(
+    return Sale(
         sale_date=payload.sale_date,
         patient_id=payload.patient_id or "",
         patient_name=payload.patient_name or "",
@@ -582,11 +679,11 @@ async def compute_sale(payload: SaleCreate) -> Sale:
         profit=profit,
         installments=installments,
         receive_schedule=schedule,
+        payments=[],
         receive_date=receive_date,
         post_sale_date=post_sale,
         appointment_id=payload.appointment_id or "",
     )
-    return sale
 
 
 @api_router.get("/sales", response_model=List[Sale])
@@ -762,14 +859,17 @@ async def reports_monthly(year: int = Query(..., description="Year, e.g. 2026"))
 # Finance (Gestão Financeira)
 # =====================
 def bucket_for_sale(s: dict) -> str:
-    """Classify a sale into: dinheiro, pix, debito, cartao_parcelado, outros."""
+    """Classify a sale into: dinheiro, pix, debito, cartao_parcelado, misto, outros."""
+    payments = s.get("payments") or []
+    if len(payments) > 1:
+        return "misto"
     name = (s.get("payment_method_name") or "").lower()
     installments = int(s.get("installments", 1) or 1)
-    if "dinheiro" in name:
+    if "dinheiro" in name and "+" not in name:
         return "dinheiro"
-    if "pix" in name:
+    if "pix" in name and "+" not in name:
         return "pix"
-    if "débito" in name or "debito" in name:
+    if ("débito" in name or "debito" in name) and "+" not in name:
         return "debito"
     if (
         installments > 1
@@ -782,9 +882,23 @@ def bucket_for_sale(s: dict) -> str:
     return "outros"
 
 
+def bucket_for_payment(method_name: str, installments: int = 1) -> str:
+    n = (method_name or "").lower()
+    if "dinheiro" in n:
+        return "dinheiro"
+    if "pix" in n:
+        return "pix"
+    if "débito" in n or "debito" in n:
+        return "debito"
+    if installments > 1 or "crédito" in n or "credito" in n or "cartão" in n or "cartao" in n:
+        return "cartao_parcelado"
+    return "outros"
+
+
 @api_router.get("/finance/summary")
 async def finance_summary(month: Optional[str] = None, year: Optional[int] = None):
-    """Aggregated payment values. Provide month=YYYY-MM or year=YYYY."""
+    """Aggregated payment values. Provide month=YYYY-MM or year=YYYY.
+    For mixed payments, each method's amount is allocated to its proper bucket."""
     query = {}
     if month:
         query["sale_date"] = {"$regex": f"^{month}"}
@@ -794,9 +908,19 @@ async def finance_summary(month: Optional[str] = None, year: Optional[int] = Non
     buckets = {"dinheiro": 0.0, "pix": 0.0, "debito": 0.0, "cartao_parcelado": 0.0, "outros": 0.0}
     counts = {k: 0 for k in buckets}
     for s in sales:
-        b = bucket_for_sale(s)
-        buckets[b] += s.get("gross_value", 0)
-        counts[b] += 1
+        payments = s.get("payments") or []
+        if len(payments) > 1:
+            # Allocate each payment to its proper bucket
+            for p in payments:
+                b = bucket_for_payment(p.get("method_name", ""), int(p.get("installments", 1) or 1))
+                buckets[b] += float(p.get("amount", 0))
+                counts[b] += 1
+        else:
+            b = bucket_for_sale(s)
+            if b == "misto":
+                b = "outros"
+            buckets[b] += s.get("gross_value", 0)
+            counts[b] += 1
     total = sum(buckets.values())
     return {
         "scope": {"month": month, "year": year},

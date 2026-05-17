@@ -66,7 +66,17 @@ const emptyProcForm = {
   payment_method_id: "",
   card_fee_pct: "",
   installments: 1,
+  // Mixed payments
+  mixed: false,
+  mixed_payments: [], // [{method_id, amount, card_fee_pct, installments}]
   avulsos: [],
+};
+
+const emptyMixedPayment = {
+  method_id: "",
+  amount: "",
+  card_fee_pct: "",
+  installments: 1,
 };
 
 const emptyAvulso = { product_id: "", name: "", qty: 1, unit_price: 0, unit_cost: 0 };
@@ -233,31 +243,102 @@ export default function Prontuario() {
     );
     const gross = procValue + avulsosValue;
     const cost = procCost + avulsosCost;
-    const feePct = Number(procForm.card_fee_pct) || 0;
-    const fee = (gross * feePct) / 100;
-    const profit = gross - cost - fee;
-    const inst = Math.max(1, parseInt(procForm.installments) || 1);
-    const net = gross - fee;
-    const perInstallment = inst > 0 ? net / inst : net;
-    // schedule preview
-    const schedule = [];
-    if (isCardPayment && procForm.procedure_date) {
-      const baseDate = new Date(procForm.procedure_date + "T12:00:00");
-      for (let i = 0; i < inst; i++) {
-        const d = new Date(baseDate);
-        d.setDate(d.getDate() + 30 * (i + 1));
-        const val = i < inst - 1 ? perInstallment : net - perInstallment * (inst - 1);
-        schedule.push({
-          date: d.toISOString().slice(0, 10),
-          value: Math.round(val * 100) / 100,
-        });
+
+    let fee = 0;
+    let feePct = 0;
+    let inst = 1;
+    let perInstallment = 0;
+    let schedule = [];
+    let mixedTotal = 0;
+    let mixedFee = 0;
+
+    if (procForm.mixed) {
+      // Calculate fee from each mixed payment
+      for (const mp of procForm.mixed_payments) {
+        const amt = Number(mp.amount) || 0;
+        const m = methods.find((x) => x.id === mp.method_id);
+        const isCard = !!(m && m.is_card);
+        const pct = isCard ? Number(mp.card_fee_pct) || 0 : 0;
+        const f = (amt * pct) / 100;
+        mixedFee += f;
+        mixedTotal += amt;
+      }
+      fee = mixedFee;
+      feePct = 0;
+    } else {
+      feePct = Number(procForm.card_fee_pct) || 0;
+      fee = (gross * feePct) / 100;
+      inst = Math.max(1, parseInt(procForm.installments) || 1);
+      const net = gross - fee;
+      perInstallment = inst > 0 ? net / inst : net;
+      if (isCardPayment && procForm.procedure_date) {
+        const baseDate = new Date(procForm.procedure_date + "T12:00:00");
+        for (let i = 0; i < inst; i++) {
+          const d = new Date(baseDate);
+          d.setDate(d.getDate() + 30 * (i + 1));
+          const val = i < inst - 1 ? perInstallment : net - perInstallment * (inst - 1);
+          schedule.push({
+            date: d.toISOString().slice(0, 10),
+            value: Math.round(val * 100) / 100,
+          });
+        }
       }
     }
+    const profit = gross - cost - fee;
+    const diff = procForm.mixed ? mixedTotal - gross : 0;
     return {
-      procValue, procCost, avulsosValue, avulsosCost,
-      gross, cost, fee, profit, feePct, net, inst, perInstallment, schedule,
+      procValue,
+      procCost,
+      avulsosValue,
+      avulsosCost,
+      gross,
+      cost,
+      fee,
+      profit,
+      feePct,
+      net: gross - fee,
+      inst,
+      perInstallment,
+      schedule,
+      mixedTotal,
+      mixedDiff: diff,
     };
-  }, [procForm, isCardPayment]);
+  }, [procForm, isCardPayment, methods]);
+
+  // Mixed payments handlers
+  const addMixedPayment = () =>
+    setProcForm((f) => ({
+      ...f,
+      mixed_payments: [...f.mixed_payments, { ...emptyMixedPayment }],
+    }));
+  const removeMixedPayment = (idx) =>
+    setProcForm((f) => ({
+      ...f,
+      mixed_payments: f.mixed_payments.filter((_, i) => i !== idx),
+    }));
+  const updateMixedPayment = (idx, field, value) => {
+    setProcForm((f) => {
+      const arr = [...f.mixed_payments];
+      arr[idx] = { ...arr[idx], [field]: value };
+      // Auto-fill fee_pct when method is picked
+      if (field === "method_id") {
+        const m = methods.find((x) => x.id === value);
+        arr[idx].card_fee_pct = m && m.is_card ? String(m.card_fee_pct) : "0";
+      }
+      return { ...f, mixed_payments: arr };
+    });
+  };
+  const toggleMixed = (on) => {
+    setProcForm((f) => ({
+      ...f,
+      mixed: on,
+      mixed_payments: on
+        ? f.mixed_payments.length > 0
+          ? f.mixed_payments
+          : [{ ...emptyMixedPayment }, { ...emptyMixedPayment }]
+        : f.mixed_payments,
+    }));
+  };
 
   const submitProcedure = async () => {
     if (!detailPatient) return;
@@ -265,9 +346,27 @@ export default function Prontuario() {
       toast.error("Selecione o procedimento.");
       return;
     }
-    if (!procForm.payment_method_id) {
+    if (!procForm.mixed && !procForm.payment_method_id) {
       toast.error("Selecione a forma de pagamento.");
       return;
+    }
+    if (procForm.mixed) {
+      const filled = procForm.mixed_payments.filter(
+        (p) => p.method_id && Number(p.amount) > 0
+      );
+      if (filled.length < 2) {
+        toast.error("Adicione ao menos 2 formas de pagamento.");
+        return;
+      }
+      const sumAmt = filled.reduce((s, p) => s + Number(p.amount), 0);
+      if (Math.abs(sumAmt - preview.gross) > 0.05) {
+        toast.error(
+          `Soma das formas (${formatBRL(sumAmt)}) deve igualar o total ${formatBRL(
+            preview.gross
+          )}.`
+        );
+        return;
+      }
     }
     try {
       const procItem = {
@@ -287,7 +386,6 @@ export default function Prontuario() {
           unit_cost: Number(a.unit_cost) || 0,
         }));
 
-      // Create appointment for calendar / dashboard
       const apptRes = await api.post("/appointments", {
         patient_id: detailPatient.id,
         patient_name: detailPatient.parent_name,
@@ -299,20 +397,36 @@ export default function Prontuario() {
         notes: procForm.description,
       });
 
-      // Create sale
-      await api.post("/sales", {
+      const saleBody = {
         sale_date: procForm.procedure_date,
         patient_id: detailPatient.id,
         patient_name: detailPatient.parent_name,
         child_name: detailPatient.child_name || "",
         items: [procItem, ...avulsoItems],
         description: procForm.description,
-        payment_method_id: procForm.payment_method_id,
-        card_fee_pct:
-          procForm.card_fee_pct === "" ? null : Number(procForm.card_fee_pct),
-        installments: parseInt(procForm.installments) || 1,
         appointment_id: apptRes.data.id,
-      });
+      };
+
+      if (procForm.mixed) {
+        saleBody.payments = procForm.mixed_payments
+          .filter((p) => p.method_id && Number(p.amount) > 0)
+          .map((p) => ({
+            method_id: p.method_id,
+            amount: Number(p.amount),
+            card_fee_pct:
+              p.card_fee_pct === "" || p.card_fee_pct === null
+                ? null
+                : Number(p.card_fee_pct),
+            installments: parseInt(p.installments) || 1,
+          }));
+      } else {
+        saleBody.payment_method_id = procForm.payment_method_id;
+        saleBody.card_fee_pct =
+          procForm.card_fee_pct === "" ? null : Number(procForm.card_fee_pct);
+        saleBody.installments = parseInt(procForm.installments) || 1;
+      }
+
+      await api.post("/sales", saleBody);
 
       toast.success("Procedimento registrado");
       setShowAddProc(false);
@@ -658,10 +772,11 @@ export default function Prontuario() {
                       />
                     </div>
                     <div>
-                      <Label>Forma de pagamento *</Label>
+                      <Label>Forma de pagamento {procForm.mixed ? "" : "*"}</Label>
                       <Select
                         value={procForm.payment_method_id}
                         onValueChange={pickPayment}
+                        disabled={procForm.mixed}
                       >
                         <SelectTrigger data-testid="proc-pm">
                           <SelectValue placeholder="Selecionar" />
@@ -678,19 +793,21 @@ export default function Prontuario() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
-                      <Label>Taxa do cartão (%) — editável</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        data-testid="proc-fee"
-                        value={procForm.card_fee_pct}
-                        onChange={(e) =>
-                          setProcForm({ ...procForm, card_fee_pct: e.target.value })
-                        }
-                      />
-                    </div>
-                    {isCardPayment && (
+                    {!procForm.mixed && (
+                      <div>
+                        <Label>Taxa do cartão (%) — editável</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          data-testid="proc-fee"
+                          value={procForm.card_fee_pct}
+                          onChange={(e) =>
+                            setProcForm({ ...procForm, card_fee_pct: e.target.value })
+                          }
+                        />
+                      </div>
+                    )}
+                    {!procForm.mixed && isCardPayment && (
                       <div>
                         <Label>Parcelas</Label>
                         <Select
@@ -717,7 +834,165 @@ export default function Prontuario() {
                     )}
                   </div>
 
-                  {isCardPayment && preview.schedule.length > 0 && (
+                  {/* Mixed payment toggle + UI */}
+                  <div className="flex items-center gap-2 pt-2">
+                    <input
+                      type="checkbox"
+                      id="mixed-toggle"
+                      checked={procForm.mixed}
+                      onChange={(e) => toggleMixed(e.target.checked)}
+                      data-testid="proc-mixed-toggle"
+                      className="w-4 h-4 rounded accent-[#C97D63]"
+                    />
+                    <Label htmlFor="mixed-toggle" className="cursor-pointer">
+                      Pagamento dividido em mais de uma forma (ex: Dinheiro + PIX)
+                    </Label>
+                  </div>
+
+                  {procForm.mixed && (
+                    <div className="rounded-xl border border-[#E8CFC1] bg-white p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[#C97D63]">Formas de pagamento</Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={addMixedPayment}
+                          data-testid="add-mixed-pm-btn"
+                        >
+                          <Plus className="w-3 h-3 mr-1" /> Adicionar forma
+                        </Button>
+                      </div>
+                      <div className="space-y-2">
+                        {procForm.mixed_payments.map((mp, idx) => {
+                          const m = methods.find((x) => x.id === mp.method_id);
+                          const isCard = !!(m && m.is_card);
+                          return (
+                            <div
+                              key={idx}
+                              className="grid grid-cols-12 gap-2 items-end p-2 rounded-lg bg-[#FDFDF9] border border-[#EBE8E3]"
+                            >
+                              <div className="col-span-12 md:col-span-4">
+                                <Label className="text-xs">Forma</Label>
+                                <Select
+                                  value={mp.method_id}
+                                  onValueChange={(v) =>
+                                    updateMixedPayment(idx, "method_id", v)
+                                  }
+                                >
+                                  <SelectTrigger
+                                    data-testid={`mixed-pm-${idx}`}
+                                  >
+                                    <SelectValue placeholder="—" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {methods
+                                      .filter((m) => m.active)
+                                      .map((m) => (
+                                        <SelectItem key={m.id} value={m.id}>
+                                          {m.name}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="col-span-6 md:col-span-3">
+                                <Label className="text-xs">Valor (R$)</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  data-testid={`mixed-amount-${idx}`}
+                                  value={mp.amount}
+                                  onChange={(e) =>
+                                    updateMixedPayment(idx, "amount", e.target.value)
+                                  }
+                                />
+                              </div>
+                              {isCard && (
+                                <>
+                                  <div className="col-span-3 md:col-span-2">
+                                    <Label className="text-xs">Taxa %</Label>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={mp.card_fee_pct}
+                                      onChange={(e) =>
+                                        updateMixedPayment(
+                                          idx,
+                                          "card_fee_pct",
+                                          e.target.value
+                                        )
+                                      }
+                                    />
+                                  </div>
+                                  <div className="col-span-3 md:col-span-2">
+                                    <Label className="text-xs">Parcelas</Label>
+                                    <Select
+                                      value={String(mp.installments)}
+                                      onValueChange={(v) =>
+                                        updateMixedPayment(
+                                          idx,
+                                          "installments",
+                                          parseInt(v)
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(
+                                          (n) => (
+                                            <SelectItem
+                                              key={n}
+                                              value={String(n)}
+                                            >
+                                              {n}x
+                                            </SelectItem>
+                                          )
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </>
+                              )}
+                              <div className="col-span-12 md:col-span-1 flex items-end justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => removeMixedPayment(idx)}
+                                  className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
+                                >
+                                  <X className="w-4 h-4" strokeWidth={1.5} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-[#EBE8E3]">
+                        <span className="text-xs text-[#7A726D]">
+                          Soma das formas:
+                        </span>
+                        <span
+                          className={`font-semibold ${
+                            Math.abs(preview.mixedDiff) < 0.05
+                              ? "text-[#5C7053]"
+                              : "text-[#D06B6B]"
+                          }`}
+                          data-testid="mixed-sum"
+                        >
+                          {formatBRL(preview.mixedTotal)} / {formatBRL(preview.gross)}
+                          {Math.abs(preview.mixedDiff) >= 0.05 && (
+                            <span className="ml-2 text-xs">
+                              (diferença {formatBRL(preview.mixedDiff)})
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {!procForm.mixed && isCardPayment && preview.schedule.length > 0 && (
                     <div className="rounded-xl bg-white border border-[#E8CFC1] p-3">
                       <p className="text-[11px] uppercase tracking-widest text-[#7A726D] mb-2">
                         Cronograma de recebimento (líquido)
