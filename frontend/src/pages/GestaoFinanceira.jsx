@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, formatBRL, formatDate } from "@/lib/api";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -10,6 +11,8 @@ import {
   Layers,
   TrendingUp,
   Calendar,
+  Check,
+  Clock,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -104,6 +107,33 @@ export default function GestaoFinanceira() {
   }, [buckets]);
 
   const monthlyReceivables = useMemo(() => receivables.slice(-12), [receivables]);
+
+  const totals = useMemo(() => {
+    let prev = 0;
+    let recv = 0;
+    let pend = 0;
+    for (const s of cardSales) {
+      for (const r of s.receive_schedule || []) {
+        prev += Number(r.value || 0);
+        if (r.received) recv += Number(r.value || 0);
+        else pend += Number(r.value || 0);
+      }
+    }
+    return { prev, recv, pend };
+  }, [cardSales]);
+
+  const toggleInstallment = async (sale, installment) => {
+    const newReceived = !installment.received;
+    try {
+      await api.patch(`/sales/${sale.id}/installments/${installment.installment}`, {
+        received: newReceived,
+      });
+      toast.success(newReceived ? "Parcela marcada como recebida" : "Marcada como pendente");
+      await loadCard();
+    } catch {
+      toast.error("Erro ao atualizar parcela");
+    }
+  };
 
   return (
     <div className="space-y-6" data-testid="financeiro-page">
@@ -271,7 +301,7 @@ export default function GestaoFinanceira() {
 
         {/* VENDAS DE CARTÃO */}
         <TabsContent value="cartao" className="space-y-5 mt-6">
-          <div className="brinquinho-card p-4 flex items-center gap-4">
+          <div className="brinquinho-card p-4 flex flex-wrap items-center gap-6">
             <div>
               <Label className="text-[11px] uppercase tracking-widest text-[#7A726D]">
                 Mês
@@ -283,6 +313,30 @@ export default function GestaoFinanceira() {
                 data-testid="card-month-filter"
                 className="mt-1 w-44"
               />
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                Total previsto
+              </p>
+              <p className="font-heading text-xl font-semibold text-[#2D2825]">
+                {formatBRL(totals.prev)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                Recebido
+              </p>
+              <p className="font-heading text-xl font-semibold text-[#5C7053]">
+                {formatBRL(totals.recv)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                Pendente
+              </p>
+              <p className="font-heading text-xl font-semibold text-[#C97D63]">
+                {formatBRL(totals.pend)}
+              </p>
             </div>
             <div className="ml-auto text-right">
               <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
@@ -360,22 +414,46 @@ export default function GestaoFinanceira() {
                             className="w-3.5 h-3.5 text-[#C97D63]"
                             strokeWidth={1.5}
                           />
-                          Meses a receber
+                          Meses a receber — clique para marcar como recebido
                         </p>
                         <div className="flex flex-wrap gap-2">
-                          {s.receive_schedule.map((r) => (
-                            <div
-                              key={r.installment}
-                              className="text-xs px-3 py-1.5 rounded-lg bg-[#F2E4DF]/60 border border-[#E8CFC1]"
-                            >
-                              <span className="text-[#7A726D]">
-                                {formatDate(r.date)}
-                              </span>
-                              <span className="ml-2 font-semibold text-[#C97D63]">
-                                {formatBRL(r.value)}
-                              </span>
-                            </div>
-                          ))}
+                          {s.receive_schedule.map((r) => {
+                            const received = !!r.received;
+                            return (
+                              <button
+                                key={r.installment}
+                                onClick={() => toggleInstallment(s, r)}
+                                data-testid={`installment-${s.id}-${r.installment}`}
+                                className={`text-xs px-3 py-1.5 rounded-lg border transition flex items-center gap-2 ${
+                                  received
+                                    ? "bg-[#E4EDDF] border-[#C8DABF] hover:bg-[#D8E5D0]"
+                                    : "bg-[#F2E4DF]/60 border-[#E8CFC1] hover:bg-[#F2E4DF]"
+                                }`}
+                              >
+                                {received ? (
+                                  <Check
+                                    className="w-3 h-3 text-[#5C7053]"
+                                    strokeWidth={2.5}
+                                  />
+                                ) : (
+                                  <Clock
+                                    className="w-3 h-3 text-[#C97D63]"
+                                    strokeWidth={1.5}
+                                  />
+                                )}
+                                <span className="text-[#7A726D]">
+                                  {formatDate(r.date)}
+                                </span>
+                                <span
+                                  className={`font-semibold ${
+                                    received ? "text-[#5C7053]" : "text-[#C97D63]"
+                                  }`}
+                                >
+                                  {formatBRL(r.value)}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}

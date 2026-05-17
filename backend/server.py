@@ -630,6 +630,32 @@ async def delete_sale(sale_id: str):
     return {"ok": True}
 
 
+class ReceivedPayload(BaseModel):
+    received: bool
+
+
+@api_router.patch("/sales/{sale_id}/installments/{installment_num}")
+async def toggle_installment_received(sale_id: str, installment_num: int, payload: ReceivedPayload):
+    """Mark an installment as received/pending."""
+    existing = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Venda não encontrada")
+    schedule = existing.get("receive_schedule") or []
+    updated = False
+    for r in schedule:
+        if int(r.get("installment", 0)) == installment_num:
+            r["received"] = bool(payload.received)
+            r["received_date"] = date.today().isoformat() if payload.received else ""
+            updated = True
+            break
+    if not updated:
+        raise HTTPException(404, "Parcela não encontrada")
+    await db.sales.update_one(
+        {"id": sale_id}, {"$set": {"receive_schedule": schedule}}
+    )
+    return {"ok": True, "schedule": schedule}
+
+
 # =====================
 # Dashboard
 # =====================
@@ -795,16 +821,31 @@ async def finance_card_sales(month: Optional[str] = None):
 
 @api_router.get("/finance/receivables")
 async def finance_receivables(month: Optional[str] = None):
-    """Receivables expected per month (from schedules)."""
+    """Receivables expected per month (from schedules) with received vs pending."""
     sales = await db.sales.find({}, {"_id": 0}).to_list(10000)
-    by_month: dict[str, float] = {}
+    by_month: dict[str, dict] = {}
     for s in sales:
         for r in s.get("receive_schedule", []) or []:
             ym = (r.get("date") or "")[:7]
             if not ym:
                 continue
-            by_month[ym] = by_month.get(ym, 0) + float(r.get("value", 0))
-    rows = [{"month": k, "value": round(v, 2)} for k, v in sorted(by_month.items())]
+            if ym not in by_month:
+                by_month[ym] = {"value": 0.0, "received": 0.0, "pending": 0.0}
+            val = float(r.get("value", 0))
+            by_month[ym]["value"] += val
+            if r.get("received"):
+                by_month[ym]["received"] += val
+            else:
+                by_month[ym]["pending"] += val
+    rows = [
+        {
+            "month": k,
+            "value": round(v["value"], 2),
+            "received": round(v["received"], 2),
+            "pending": round(v["pending"], 2),
+        }
+        for k, v in sorted(by_month.items())
+    ]
     if month:
         rows = [r for r in rows if r["month"] == month]
     return rows
