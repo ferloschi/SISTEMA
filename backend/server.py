@@ -73,6 +73,7 @@ class Patient(BaseModel):
     phone: Optional[str] = ""
     email: Optional[str] = ""
     birth_date: Optional[str] = ""
+    comorbidades: Optional[str] = ""
     notes: Optional[str] = ""
     created_at: str = Field(default_factory=now_utc_iso)
 
@@ -83,6 +84,22 @@ class PatientCreate(BaseModel):
     phone: Optional[str] = ""
     email: Optional[str] = ""
     birth_date: Optional[str] = ""
+    comorbidades: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
+class Insumo(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    purchase_value: float = 0.0
+    notes: Optional[str] = ""
+    created_at: str = Field(default_factory=now_utc_iso)
+
+
+class InsumoCreate(BaseModel):
+    name: str
+    purchase_value: float = 0.0
     notes: Optional[str] = ""
 
 
@@ -412,6 +429,41 @@ async def delete_payment_method(pm_id: str):
 
 
 # =====================
+# Insumos (Precificação)
+# =====================
+@api_router.get("/insumos", response_model=List[Insumo])
+async def list_insumos():
+    items = await db.insumos.find({}, {"_id": 0}).sort("name", 1).to_list(2000)
+    return items
+
+
+@api_router.post("/insumos", response_model=Insumo)
+async def create_insumo(payload: InsumoCreate):
+    ins = Insumo(**payload.model_dump())
+    await db.insumos.insert_one(ins.model_dump())
+    return ins
+
+
+@api_router.put("/insumos/{insumo_id}", response_model=Insumo)
+async def update_insumo(insumo_id: str, payload: InsumoCreate):
+    existing = await db.insumos.find_one({"id": insumo_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Insumo não encontrado")
+    data = payload.model_dump()
+    existing.update(data)
+    await db.insumos.update_one({"id": insumo_id}, {"$set": data})
+    return Insumo(**existing)
+
+
+@api_router.delete("/insumos/{insumo_id}")
+async def delete_insumo(insumo_id: str):
+    res = await db.insumos.delete_one({"id": insumo_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Insumo não encontrado")
+    return {"ok": True}
+
+
+# =====================
 # Procedures (Precificação)
 # =====================
 def enrich_procedure(p: dict) -> dict:
@@ -511,11 +563,13 @@ async def compute_sale(payload: SaleCreate) -> Sale:
 
 
 @api_router.get("/sales", response_model=List[Sale])
-async def list_sales(month: Optional[str] = None):
+async def list_sales(month: Optional[str] = None, patient_id: Optional[str] = None):
     """month format: YYYY-MM"""
     query = {}
     if month:
         query["sale_date"] = {"$regex": f"^{month}"}
+    if patient_id:
+        query["patient_id"] = patient_id
     items = await db.sales.find(query, {"_id": 0}).sort("sale_date", -1).to_list(5000)
     return items
 

@@ -3,8 +3,8 @@ import { api, formatBRL, PROCEDURE_TYPES } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -17,23 +17,26 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectGroup,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, X, Calculator } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Calculator, Droplet } from "lucide-react";
 
 const emptyItem = { product_id: "", name: "", qty: 1, unit_cost: 0 };
 
 const emptyForm = {
   name: "Perfuração Baby",
-  description: "",
   items: [{ ...emptyItem }],
   indirect_cost_pct: 20,
   margin_pct: 100,
   manual_price: 0,
   active: true,
 };
+
+const emptyInsumoForm = { name: "", purchase_value: 0, notes: "" };
 
 const computePreview = (form) => {
   const items_cost = form.items.reduce(
@@ -52,17 +55,25 @@ const computePreview = (form) => {
 export default function Precificacao() {
   const [items, setItems] = useState([]);
   const [products, setProducts] = useState([]);
+  const [insumos, setInsumos] = useState([]);
+
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
 
+  const [insumoOpen, setInsumoOpen] = useState(false);
+  const [editingInsumo, setEditingInsumo] = useState(null);
+  const [insumoForm, setInsumoForm] = useState(emptyInsumoForm);
+
   const load = async () => {
-    const [p, pr] = await Promise.all([
+    const [p, pr, ins] = await Promise.all([
       api.get("/procedures"),
       api.get("/products"),
+      api.get("/insumos"),
     ]);
     setItems(p.data);
     setProducts(pr.data);
+    setInsumos(ins.data);
   };
 
   useEffect(() => {
@@ -79,7 +90,6 @@ export default function Precificacao() {
     setEditing(proc);
     setForm({
       name: proc.name,
-      description: proc.description || "",
       items: proc.items && proc.items.length > 0 ? proc.items : [{ ...emptyItem }],
       indirect_cost_pct: proc.indirect_cost_pct,
       margin_pct: proc.margin_pct,
@@ -94,24 +104,44 @@ export default function Precificacao() {
     setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
   const updateItem = (idx, field, value) => {
     setForm((f) => {
-      const items = [...f.items];
-      items[idx] = { ...items[idx], [field]: value };
-      return { ...f, items };
+      const its = [...f.items];
+      its[idx] = { ...its[idx], [field]: value };
+      return { ...f, items: its };
     });
   };
-  const pickProduct = (idx, productId) => {
-    const pr = products.find((p) => p.id === productId);
-    if (pr) {
-      setForm((f) => {
-        const items = [...f.items];
-        items[idx] = {
-          ...items[idx],
-          product_id: pr.id,
-          name: pr.name,
-          unit_cost: pr.purchase_value,
-        };
-        return { ...f, items };
-      });
+
+  // Pick from products OR insumos. Value is prefixed: "ins:<id>" or "prod:<id>"
+  const pickItem = (idx, value) => {
+    if (!value) return;
+    const [type, id] = value.split(":");
+    if (type === "ins") {
+      const ins = insumos.find((x) => x.id === id);
+      if (ins) {
+        setForm((f) => {
+          const its = [...f.items];
+          its[idx] = {
+            ...its[idx],
+            product_id: "",
+            name: ins.name,
+            unit_cost: ins.purchase_value,
+          };
+          return { ...f, items: its };
+        });
+      }
+    } else if (type === "prod") {
+      const pr = products.find((x) => x.id === id);
+      if (pr) {
+        setForm((f) => {
+          const its = [...f.items];
+          its[idx] = {
+            ...its[idx],
+            product_id: pr.id,
+            name: pr.name,
+            unit_cost: pr.purchase_value,
+          };
+          return { ...f, items: its };
+        });
+      }
     }
   };
 
@@ -124,6 +154,7 @@ export default function Precificacao() {
     }
     const payload = {
       ...form,
+      description: "",
       indirect_cost_pct: Number(form.indirect_cost_pct) || 0,
       margin_pct: Number(form.margin_pct) || 0,
       manual_price: Number(form.manual_price) || 0,
@@ -158,357 +189,522 @@ export default function Precificacao() {
     load();
   };
 
+  // ===== Insumos =====
+  const openNewInsumo = () => {
+    setEditingInsumo(null);
+    setInsumoForm(emptyInsumoForm);
+    setInsumoOpen(true);
+  };
+  const openEditInsumo = (ins) => {
+    setEditingInsumo(ins);
+    setInsumoForm({ ...emptyInsumoForm, ...ins });
+    setInsumoOpen(true);
+  };
+  const submitInsumo = async () => {
+    if (!insumoForm.name) {
+      toast.error("Informe o nome do insumo.");
+      return;
+    }
+    const payload = {
+      name: insumoForm.name,
+      purchase_value: Number(insumoForm.purchase_value) || 0,
+      notes: insumoForm.notes,
+    };
+    try {
+      if (editingInsumo) {
+        await api.put(`/insumos/${editingInsumo.id}`, payload);
+        toast.success("Insumo atualizado");
+      } else {
+        await api.post("/insumos", payload);
+        toast.success("Insumo cadastrado");
+      }
+      setInsumoOpen(false);
+      load();
+    } catch {
+      toast.error("Erro ao salvar insumo");
+    }
+  };
+  const removeInsumo = async (ins) => {
+    if (!window.confirm(`Excluir insumo "${ins.name}"?`)) return;
+    await api.delete(`/insumos/${ins.id}`);
+    toast.success("Insumo excluído");
+    load();
+  };
+
   return (
     <div className="space-y-6" data-testid="precificacao-page">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-[#7A726D] max-w-2xl">
-          Monte o kit de cada procedimento (joia + insumos como algodão, agulha, cateter...) e
-          o sistema calcula o custo total e sugere o preço de venda usando custos indiretos e
-          margem de lucro.
-        </p>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button
-              onClick={openNew}
-              data-testid="precificacao-new-btn"
-              className="bg-[#C97D63] hover:bg-[#B36B53] text-white rounded-xl"
-            >
-              <Plus className="w-4 h-4 mr-2" strokeWidth={1.5} />
-              Novo procedimento
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="font-heading">
-                {editing ? "Editar procedimento" : "Novo procedimento"}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label>Nome do procedimento *</Label>
-                  <Select
-                    value={
-                      PROCEDURE_TYPES.includes(form.name) ? form.name : "_custom"
-                    }
-                    onValueChange={(v) =>
-                      setForm({ ...form, name: v === "_custom" ? "" : v })
-                    }
-                  >
-                    <SelectTrigger data-testid="form-proc-name-select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PROCEDURE_TYPES.map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="_custom">— Personalizado —</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {!PROCEDURE_TYPES.includes(form.name) && (
-                    <Input
-                      className="mt-2"
-                      placeholder="Digite o nome do procedimento"
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    />
-                  )}
-                </div>
-              </div>
+      <Tabs defaultValue="procedimentos">
+        <TabsList className="bg-[#F2E4DF] rounded-xl p-1">
+          <TabsTrigger
+            value="procedimentos"
+            className="data-[state=active]:bg-white data-[state=active]:text-[#C97D63] rounded-lg"
+            data-testid="tab-procedimentos-prec"
+          >
+            Procedimentos
+          </TabsTrigger>
+          <TabsTrigger
+            value="insumos"
+            className="data-[state=active]:bg-white data-[state=active]:text-[#C97D63] rounded-lg"
+            data-testid="tab-insumos"
+          >
+            Insumos
+          </TabsTrigger>
+        </TabsList>
 
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label>Itens utilizados (joia + insumos) *</Label>
-                  <Button
-                    type="button"
-                    onClick={addItem}
-                    variant="outline"
-                    size="sm"
-                    data-testid="proc-add-item-btn"
-                  >
-                    <Plus className="w-3 h-3 mr-1" /> Adicionar item
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {form.items.map((it, idx) => (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-12 gap-2 items-end p-3 rounded-xl bg-[#FDFDF9] border border-[#EBE8E3]"
+        {/* ========= PROCEDIMENTOS TAB ========= */}
+        <TabsContent value="procedimentos" className="space-y-6 mt-6">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-[#7A726D] max-w-2xl">
+              Monte o kit de cada procedimento (joia + insumos como algodão, agulha, cateter...)
+              e o sistema calcula o custo total e sugere o preço de venda usando custos
+              indiretos e margem de lucro.
+            </p>
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  onClick={openNew}
+                  data-testid="precificacao-new-btn"
+                  className="bg-[#C97D63] hover:bg-[#B36B53] text-white rounded-xl"
+                >
+                  <Plus className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                  Novo procedimento
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="font-heading">
+                    {editing ? "Editar procedimento" : "Novo procedimento"}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div>
+                    <Label>Nome do procedimento *</Label>
+                    <Select
+                      value={PROCEDURE_TYPES.includes(form.name) ? form.name : "_custom"}
+                      onValueChange={(v) =>
+                        setForm({ ...form, name: v === "_custom" ? "" : v })
+                      }
                     >
-                      <div className="col-span-12 md:col-span-5">
-                        <Label className="text-xs">Produto do estoque</Label>
-                        <Select
-                          value={it.product_id || ""}
-                          onValueChange={(v) => pickProduct(idx, v)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="— Selecionar produto —" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name} ({formatBRL(p.purchase_value)})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="col-span-7 md:col-span-3">
-                        <Label className="text-xs">Descrição (livre)</Label>
-                        <Input
-                          value={it.name}
-                          onChange={(e) => updateItem(idx, "name", e.target.value)}
-                          placeholder="Ex: Algodão"
-                        />
-                      </div>
-                      <div className="col-span-2 md:col-span-1">
-                        <Label className="text-xs">Qtd</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={it.qty}
-                          onChange={(e) => updateItem(idx, "qty", e.target.value)}
-                        />
-                      </div>
-                      <div className="col-span-2 md:col-span-2">
-                        <Label className="text-xs">Custo unit.</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={it.unit_cost}
-                          onChange={(e) => updateItem(idx, "unit_cost", e.target.value)}
-                        />
-                      </div>
-                      <div className="col-span-1 flex items-end justify-end">
-                        <button
-                          type="button"
-                          onClick={() => removeItem(idx)}
-                          className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
-                        >
-                          <X className="w-4 h-4" strokeWidth={1.5} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <Label>Custos indiretos (%)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={form.indirect_cost_pct}
-                    onChange={(e) => setForm({ ...form, indirect_cost_pct: e.target.value })}
-                    data-testid="form-indirect-pct"
-                  />
-                  <p className="text-xs text-[#7A726D] mt-1">% sobre o custo dos itens</p>
-                </div>
-                <div>
-                  <Label>Margem de lucro (%)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={form.margin_pct}
-                    onChange={(e) => setForm({ ...form, margin_pct: e.target.value })}
-                    data-testid="form-margin-pct"
-                  />
-                  <p className="text-xs text-[#7A726D] mt-1">% sobre custo + indiretos</p>
-                </div>
-                <div>
-                  <Label>Preço manual (opcional)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={form.manual_price}
-                    onChange={(e) => setForm({ ...form, manual_price: e.target.value })}
-                  />
-                  <p className="text-xs text-[#7A726D] mt-1">
-                    0 = usar preço sugerido
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={form.active}
-                  onCheckedChange={(v) => setForm({ ...form, active: v })}
-                />
-                <Label>Procedimento ativo</Label>
-              </div>
-
-              <div className="p-4 rounded-xl bg-[#F2E4DF]/40 border border-[#E8CFC1]">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-                  <div>
-                    <p className="text-[11px] uppercase text-[#7A726D]">Custo insumos</p>
-                    <p className="font-semibold">{formatBRL(preview.items_cost)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] uppercase text-[#7A726D]">
-                      Indiretos ({form.indirect_cost_pct}%)
-                    </p>
-                    <p className="font-semibold">{formatBRL(preview.indirect_value)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] uppercase text-[#7A726D]">Custo total</p>
-                    <p className="font-semibold">{formatBRL(preview.total_cost)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] uppercase text-[#7A726D]">
-                      Margem ({form.margin_pct}%)
-                    </p>
-                    <p className="font-semibold text-[#5C7053]">
-                      {formatBRL(preview.margin_value)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] uppercase text-[#7A726D]">Preço final</p>
-                    <p
-                      className="font-semibold text-[#C97D63] text-lg"
-                      data-testid="preview-final-price"
-                    >
-                      {formatBRL(preview.final_price)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setOpen(false)}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={submit}
-                data-testid="precificacao-form-submit"
-                className="bg-[#C97D63] hover:bg-[#B36B53] text-white"
-              >
-                Salvar
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {items.length === 0 ? (
-        <div className="brinquinho-card p-10 text-center text-[#7A726D]">
-          <Calculator
-            className="w-10 h-10 mx-auto text-[#C97D63] mb-3"
-            strokeWidth={1.5}
-          />
-          <p className="font-medium text-[#2D2825]">
-            Nenhum procedimento precificado ainda.
-          </p>
-          <p className="text-sm mt-1">
-            Cadastre seu primeiro procedimento para começar.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {items.map((p) => (
-            <div
-              key={p.id}
-              className="brinquinho-card p-6 flex flex-col"
-              data-testid={`proc-card-${p.id}`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-heading text-lg font-semibold text-[#2D2825]">
-                      {p.name}
-                    </h3>
-                    {!p.active && (
-                      <span className="text-xs bg-[#FBE7E7] text-[#D06B6B] px-2 py-0.5 rounded-full">
-                        Inativo
-                      </span>
+                      <SelectTrigger data-testid="form-proc-name-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROCEDURE_TYPES.map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {p}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="_custom">— Personalizado —</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {!PROCEDURE_TYPES.includes(form.name) && (
+                      <Input
+                        className="mt-2"
+                        placeholder="Digite o nome do procedimento"
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      />
                     )}
                   </div>
-                  {p.description && (
-                    <p className="text-xs text-[#7A726D] mt-1">{p.description}</p>
-                  )}
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <button
-                    onClick={() => openEdit(p)}
-                    className="p-2 rounded-lg hover:bg-[#F2E4DF] text-[#7A726D] hover:text-[#C97D63]"
-                  >
-                    <Pencil className="w-4 h-4" strokeWidth={1.5} />
-                  </button>
-                  <button
-                    onClick={() => remove(p)}
-                    className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
-                  >
-                    <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                  </button>
-                </div>
-              </div>
 
-              <div className="space-y-1 mb-4 flex-1">
-                {p.items.length === 0 ? (
-                  <p className="text-xs text-[#7A726D] italic">Sem itens cadastrados</p>
-                ) : (
-                  p.items.slice(0, 5).map((it, idx) => (
-                    <div
-                      key={idx}
-                      className="flex justify-between items-center text-xs"
-                    >
-                      <span className="text-[#2D2825] truncate">
-                        {it.qty}× {it.name}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label>Itens utilizados (joia + insumos) *</Label>
+                      <Button
+                        type="button"
+                        onClick={addItem}
+                        variant="outline"
+                        size="sm"
+                        data-testid="proc-add-item-btn"
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Adicionar item
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      {form.items.map((it, idx) => (
+                        <div
+                          key={idx}
+                          className="grid grid-cols-12 gap-2 items-end p-3 rounded-xl bg-[#FDFDF9] border border-[#EBE8E3]"
+                        >
+                          <div className="col-span-12 md:col-span-5">
+                            <Label className="text-xs">Selecionar</Label>
+                            <Select onValueChange={(v) => pickItem(idx, v)}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="— Insumo ou produto do estoque —" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {insumos.length > 0 && (
+                                  <SelectGroup>
+                                    <SelectLabel>Insumos</SelectLabel>
+                                    {insumos.map((i) => (
+                                      <SelectItem key={`ins-${i.id}`} value={`ins:${i.id}`}>
+                                        {i.name} ({formatBRL(i.purchase_value)})
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                )}
+                                {products.length > 0 && (
+                                  <SelectGroup>
+                                    <SelectLabel>Produtos do estoque</SelectLabel>
+                                    {products.map((p) => (
+                                      <SelectItem key={`prod-${p.id}`} value={`prod:${p.id}`}>
+                                        {p.name} ({formatBRL(p.purchase_value)})
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="col-span-7 md:col-span-3">
+                            <Label className="text-xs">Descrição</Label>
+                            <Input
+                              value={it.name}
+                              onChange={(e) => updateItem(idx, "name", e.target.value)}
+                            />
+                          </div>
+                          <div className="col-span-2 md:col-span-1">
+                            <Label className="text-xs">Qtd</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={it.qty}
+                              onChange={(e) => updateItem(idx, "qty", e.target.value)}
+                            />
+                          </div>
+                          <div className="col-span-2 md:col-span-2">
+                            <Label className="text-xs">Custo unit.</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={it.unit_cost}
+                              onChange={(e) => updateItem(idx, "unit_cost", e.target.value)}
+                            />
+                          </div>
+                          <div className="col-span-1 flex items-end justify-end">
+                            <button
+                              type="button"
+                              onClick={() => removeItem(idx)}
+                              className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
+                            >
+                              <X className="w-4 h-4" strokeWidth={1.5} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label>Custos indiretos (%)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={form.indirect_cost_pct}
+                        onChange={(e) =>
+                          setForm({ ...form, indirect_cost_pct: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>Margem de lucro (%)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={form.margin_pct}
+                        onChange={(e) => setForm({ ...form, margin_pct: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>Preço manual (opcional)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={form.manual_price}
+                        onChange={(e) =>
+                          setForm({ ...form, manual_price: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={form.active}
+                      onCheckedChange={(v) => setForm({ ...form, active: v })}
+                    />
+                    <Label>Procedimento ativo</Label>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-[#F2E4DF]/40 border border-[#E8CFC1]">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                      <div>
+                        <p className="text-[11px] uppercase text-[#7A726D]">Custo insumos</p>
+                        <p className="font-semibold">{formatBRL(preview.items_cost)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase text-[#7A726D]">
+                          Indiretos ({form.indirect_cost_pct}%)
+                        </p>
+                        <p className="font-semibold">{formatBRL(preview.indirect_value)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase text-[#7A726D]">Custo total</p>
+                        <p className="font-semibold">{formatBRL(preview.total_cost)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase text-[#7A726D]">
+                          Margem ({form.margin_pct}%)
+                        </p>
+                        <p className="font-semibold text-[#5C7053]">
+                          {formatBRL(preview.margin_value)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase text-[#7A726D]">Preço final</p>
+                        <p className="font-semibold text-[#C97D63] text-lg">
+                          {formatBRL(preview.final_price)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={submit}
+                    data-testid="precificacao-form-submit"
+                    className="bg-[#C97D63] hover:bg-[#B36B53] text-white"
+                  >
+                    Salvar
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {items.length === 0 ? (
+            <div className="brinquinho-card p-10 text-center text-[#7A726D]">
+              <Calculator className="w-10 h-10 mx-auto text-[#C97D63] mb-3" strokeWidth={1.5} />
+              <p className="font-medium text-[#2D2825]">Nenhum procedimento precificado ainda.</p>
+              <p className="text-sm mt-1">Cadastre seu primeiro procedimento para começar.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {items.map((p) => (
+                <div key={p.id} className="brinquinho-card p-6 flex flex-col" data-testid={`proc-card-${p.id}`}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-heading text-lg font-semibold text-[#2D2825]">
+                          {p.name}
+                        </h3>
+                        {!p.active && (
+                          <span className="text-xs bg-[#FBE7E7] text-[#D06B6B] px-2 py-0.5 rounded-full">
+                            Inativo
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        onClick={() => openEdit(p)}
+                        className="p-2 rounded-lg hover:bg-[#F2E4DF] text-[#7A726D] hover:text-[#C97D63]"
+                      >
+                        <Pencil className="w-4 h-4" strokeWidth={1.5} />
+                      </button>
+                      <button
+                        onClick={() => remove(p)}
+                        className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
+                      >
+                        <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 mb-4 flex-1">
+                    {p.items.length === 0 ? (
+                      <p className="text-xs text-[#7A726D] italic">Sem itens cadastrados</p>
+                    ) : (
+                      p.items.slice(0, 5).map((it, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-xs">
+                          <span className="text-[#2D2825] truncate">
+                            {it.qty}× {it.name}
+                          </span>
+                          <span className="text-[#7A726D] tabular-nums">
+                            {formatBRL(it.qty * it.unit_cost)}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                    {p.items.length > 5 && (
+                      <p className="text-[11px] text-[#7A726D] italic">
+                        + {p.items.length - 5} itens
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 pt-3 border-t border-[#EBE8E3]">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#7A726D]">Custo insumos</span>
+                      <span className="tabular-nums">{formatBRL(p.items_cost)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#7A726D]">Indiretos {p.indirect_cost_pct}%</span>
+                      <span className="tabular-nums">{formatBRL(p.indirect_value)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#7A726D]">Custo total</span>
+                      <span className="tabular-nums font-medium">{formatBRL(p.total_cost)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-[#5C7053]">
+                      <span>Margem {p.margin_pct}%</span>
+                      <span className="tabular-nums">+{formatBRL(p.margin_value)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 mt-1 border-t border-[#EBE8E3]">
+                      <span className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                        Preço final
                       </span>
-                      <span className="text-[#7A726D] tabular-nums">
-                        {formatBRL(it.qty * it.unit_cost)}
+                      <span className="font-heading font-semibold text-xl text-[#C97D63]">
+                        {formatBRL(p.final_price)}
                       </span>
                     </div>
-                  ))
-                )}
-                {p.items.length > 5 && (
-                  <p className="text-[11px] text-[#7A726D] italic">
-                    + {p.items.length - 5} itens
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2 pt-3 border-t border-[#EBE8E3]">
-                <div className="flex justify-between text-xs">
-                  <span className="text-[#7A726D]">Custo insumos</span>
-                  <span className="tabular-nums">{formatBRL(p.items_cost)}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-[#7A726D]">
-                    Indiretos {p.indirect_cost_pct}%
-                  </span>
-                  <span className="tabular-nums">{formatBRL(p.indirect_value)}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-[#7A726D]">Custo total</span>
-                  <span className="tabular-nums font-medium">
-                    {formatBRL(p.total_cost)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs text-[#5C7053]">
-                  <span>Margem {p.margin_pct}%</span>
-                  <span className="tabular-nums">+{formatBRL(p.margin_value)}</span>
-                </div>
-                <div className="flex justify-between items-center pt-2 mt-1 border-t border-[#EBE8E3]">
-                  <span className="text-[11px] uppercase tracking-widest text-[#7A726D]">
-                    Preço final
-                  </span>
-                  <span className="font-heading font-semibold text-xl text-[#C97D63]">
-                    {formatBRL(p.final_price)}
-                  </span>
-                </div>
-                {p.manual_price > 0 && (
-                  <p className="text-[10px] text-[#7A726D] italic text-right">
-                    (preço manual; sugerido {formatBRL(p.suggested_price)})
-                  </p>
-                )}
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+        </TabsContent>
+
+        {/* ========= INSUMOS TAB ========= */}
+        <TabsContent value="insumos" className="space-y-4 mt-6">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-[#7A726D] max-w-2xl">
+              Cadastre os insumos usados nos procedimentos (algodão, agulha, gaze, etc.) com seu
+              valor de compra. Estes insumos ficam disponíveis ao montar o kit dos procedimentos.
+            </p>
+            <Dialog open={insumoOpen} onOpenChange={setInsumoOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  onClick={openNewInsumo}
+                  data-testid="insumo-new-btn"
+                  className="bg-[#C97D63] hover:bg-[#B36B53] text-white rounded-xl"
+                >
+                  <Plus className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                  Novo insumo
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="font-heading">
+                    {editingInsumo ? "Editar insumo" : "Novo insumo"}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div>
+                    <Label>Nome *</Label>
+                    <Input
+                      data-testid="insumo-form-name"
+                      value={insumoForm.name}
+                      onChange={(e) =>
+                        setInsumoForm({ ...insumoForm, name: e.target.value })
+                      }
+                      placeholder="Ex: Algodão"
+                    />
+                  </div>
+                  <div>
+                    <Label>Valor de compra (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      data-testid="insumo-form-value"
+                      value={insumoForm.purchase_value}
+                      onChange={(e) =>
+                        setInsumoForm({ ...insumoForm, purchase_value: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>Observações</Label>
+                    <Input
+                      value={insumoForm.notes}
+                      onChange={(e) =>
+                        setInsumoForm({ ...insumoForm, notes: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setInsumoOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={submitInsumo}
+                    data-testid="insumo-form-submit"
+                    className="bg-[#C97D63] hover:bg-[#B36B53] text-white"
+                  >
+                    Salvar
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {insumos.length === 0 ? (
+            <div className="brinquinho-card p-10 text-center text-[#7A726D]">
+              <Droplet className="w-10 h-10 mx-auto text-[#C97D63] mb-3" strokeWidth={1.5} />
+              <p className="font-medium text-[#2D2825]">Nenhum insumo cadastrado ainda.</p>
+            </div>
+          ) : (
+            <div className="brinquinho-card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#FDFDF9] border-b border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
+                    <th className="py-3 px-4 text-left">Insumo</th>
+                    <th className="py-3 px-4 text-right">Valor de compra</th>
+                    <th className="py-3 px-4 text-left">Observações</th>
+                    <th className="py-3 px-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {insumos.map((ins) => (
+                    <tr
+                      key={ins.id}
+                      className="border-b border-[#EBE8E3] hover:bg-[#FDFDF9]/60"
+                      data-testid={`insumo-row-${ins.id}`}
+                    >
+                      <td className="py-3 px-4 font-medium">{ins.name}</td>
+                      <td className="py-3 px-4 text-right">
+                        {formatBRL(ins.purchase_value)}
+                      </td>
+                      <td className="py-3 px-4 text-xs text-[#7A726D]">{ins.notes || "—"}</td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="inline-flex gap-2">
+                          <button
+                            onClick={() => openEditInsumo(ins)}
+                            className="p-2 rounded-lg hover:bg-[#F2E4DF] text-[#7A726D] hover:text-[#C97D63]"
+                          >
+                            <Pencil className="w-4 h-4" strokeWidth={1.5} />
+                          </button>
+                          <button
+                            onClick={() => removeInsumo(ins)}
+                            className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
+                          >
+                            <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

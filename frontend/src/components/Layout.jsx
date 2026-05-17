@@ -2,9 +2,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Package,
-  CalendarDays,
   ClipboardList,
-  ShoppingCart,
   Wallet,
   Calculator,
   Sparkles,
@@ -14,9 +12,7 @@ const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, testid: "sidebar-nav-dashboard" },
   { to: "/estoque", label: "Estoque", icon: Package, testid: "sidebar-nav-estoque" },
   { to: "/precificacao", label: "Precificação", icon: Calculator, testid: "sidebar-nav-precificacao" },
-  { to: "/agendamento", label: "Agendamento", icon: CalendarDays, testid: "sidebar-nav-agendamento" },
-  { to: "/prontuarios", label: "Prontuários", icon: ClipboardList, testid: "sidebar-nav-prontuarios" },
-  { to: "/vendas", label: "Vendas", icon: ShoppingCart, testid: "sidebar-nav-vendas" },
+  { to: "/prontuario", label: "Prontuário", icon: ClipboardList, testid: "sidebar-nav-prontuario" },
   { to: "/gestao", label: "Gestão", icon: Wallet, testid: "sidebar-nav-gestao" },
 ];
 
@@ -24,8 +20,9 @@ const pageTitle = {
   "/dashboard": "Visão Geral",
   "/estoque": "Controle de Estoque",
   "/precificacao": "Precificação de Procedimentos",
+  "/prontuario": "Prontuário",
+  "/prontuarios": "Prontuário",
   "/agendamento": "Agendamento",
-  "/prontuarios": "Prontuários",
   "/vendas": "Vendas",
   "/gestao": "Gestão Financeira",
 };

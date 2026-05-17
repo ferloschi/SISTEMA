@@ -3,7 +3,6 @@ import {
   api,
   formatBRL,
   PRODUCT_CATEGORIES,
-  INSUMO_OPTIONS,
   MATERIAL_OPTIONS,
   MODELO_OPTIONS,
   SIZE_OPTIONS,
@@ -198,16 +197,6 @@ export default function Estoque() {
                 </Select>
               </div>
               <div>
-                <Label>Insumo</Label>
-                <SelectOrNone
-                  value={form.insumo}
-                  onValueChange={(v) => setForm({ ...form, insumo: v })}
-                  options={INSUMO_OPTIONS}
-                  placeholder="Selecione (opcional)"
-                  testid="form-insumo"
-                />
-              </div>
-              <div>
                 <Label>Material</Label>
                 <SelectOrNone
                   value={form.material}
@@ -337,13 +326,6 @@ export default function Estoque() {
             ) : (
               items.map((p) => {
                 const low = p.stock_qty <= p.min_stock;
-                const details = [
-                  p.insumo && `Insumo: ${p.insumo}`,
-                  p.material,
-                  p.modelo,
-                  p.size,
-                  p.color,
-                ].filter(Boolean);
                 return (
                   <tr
                     key={p.id}
@@ -358,7 +340,7 @@ export default function Estoque() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-xs text-[#7A726D]">
-                      {details.join(" · ") || "—"}
+                      {[p.material, p.modelo, p.size, p.color].filter(Boolean).join(" · ") || "—"}
                     </td>
                     <td className="py-3 px-4 text-right">{formatBRL(p.purchase_value)}</td>
                     <td className="py-3 px-4 text-right font-medium">
