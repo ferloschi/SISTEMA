@@ -39,6 +39,7 @@ class Product(BaseModel):
     modelo: Optional[str] = ""
     size: Optional[str] = ""
     color: Optional[str] = ""
+    fornecedor: Optional[str] = ""
     purchase_value: float = 0.0
     sale_value: float = 0.0
     indirect_cost_pct: float = 20.0  # legacy, kept for compatibility
@@ -57,6 +58,7 @@ class ProductCreate(BaseModel):
     modelo: Optional[str] = ""
     size: Optional[str] = ""
     color: Optional[str] = ""
+    fornecedor: Optional[str] = ""
     purchase_value: float = 0.0
     sale_value: float = 0.0
     indirect_cost_pct: float = 20.0

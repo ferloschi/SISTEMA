@@ -39,6 +39,7 @@ const emptyForm = {
   modelo: "",
   size: "",
   color: "",
+  fornecedor: "",
   purchase_value: 0,
   sale_value: 0,
   stock_qty: 0,
@@ -236,6 +237,15 @@ export default function Estoque() {
                   testid="form-color"
                 />
               </div>
+              <div className="md:col-span-2">
+                <Label>Fornecedor</Label>
+                <Input
+                  data-testid="form-fornecedor"
+                  value={form.fornecedor}
+                  onChange={(e) => setForm({ ...form, fornecedor: e.target.value })}
+                  placeholder="Nome do fornecedor"
+                />
+              </div>
               <div>
                 <Label>Valor de Compra (R$)</Label>
                 <Input
@@ -340,7 +350,13 @@ export default function Estoque() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-xs text-[#7A726D]">
-                      {[p.material, p.modelo, p.size, p.color].filter(Boolean).join(" · ") || "—"}
+                      {[
+                        p.material,
+                        p.modelo,
+                        p.size,
+                        p.color,
+                        p.fornecedor && `Fornecedor: ${p.fornecedor}`,
+                      ].filter(Boolean).join(" · ") || "—"}
                     </td>
                     <td className="py-3 px-4 text-right">{formatBRL(p.purchase_value)}</td>
                     <td className="py-3 px-4 text-right font-medium">
