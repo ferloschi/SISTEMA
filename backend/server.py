@@ -76,6 +76,7 @@ class Patient(BaseModel):
     email: Optional[str] = ""
     birth_date: Optional[str] = ""
     comorbidades: Optional[str] = ""
+    anamnese: Optional[Dict[str, Any]] = {}
     notes: Optional[str] = ""
     created_at: str = Field(default_factory=now_utc_iso)
 
@@ -87,6 +88,7 @@ class PatientCreate(BaseModel):
     email: Optional[str] = ""
     birth_date: Optional[str] = ""
     comorbidades: Optional[str] = ""
+    anamnese: Optional[Dict[str, Any]] = {}
     notes: Optional[str] = ""
 
 
