@@ -46,11 +46,114 @@ const addDaysISO = (iso, days) => {
   }
 };
 
+const ANAMNESE_QUESTIONS = [
+  { key: "cirurgia", label: "Já fez alguma cirurgia?", detail: "Qual?" },
+  { key: "medicamento", label: "Faz uso de algum medicamento?", detail: "Qual?" },
+  { key: "alergias", label: "Possui alergias?", detail: "Qual?" },
+  {
+    key: "imunidade",
+    label: "Outras comorbidades que indiquem imunidade baixa?",
+    detail: "Qual?",
+  },
+  { key: "gestante", label: "Está gestante?", detail: "Quantas semanas?" },
+  { key: "hipertensao", label: "Hipertensão arterial?" },
+  { key: "diabetes", label: "Diabetes?", detail: "Qual tipo?" },
+  { key: "fumante", label: "É fumante?" },
+  { key: "hepatite", label: "Já teve hepatite?", detail: "Qual?" },
+  { key: "hiv", label: "HIV?" },
+  {
+    key: "coagulacao",
+    label: "Deficiência de coagulação?",
+    detail: "Qual?",
+    hasUnknown: true,
+  },
+  { key: "metahemoglobinemia", label: "Metahemoglobinemia?", hasUnknown: true },
+  {
+    key: "prematuridade",
+    label: "Prematuridade?",
+    detail: "Quantas semanas nasceu?",
+  },
+  { key: "dermatite", label: "Dermatite?", detail: "Local:" },
+  {
+    key: "pomada_anestesica",
+    label: "Solicitou uso de pomada anestésica?",
+    simHint: "⚠️ Assinar o termo de uso da pomada",
+  },
+];
+
+const AnamneseQuestion = ({ q, value, onChange }) => {
+  const val = value || {};
+  const setVal = (v) => onChange({ ...val, value: v });
+  const setDetail = (d) => onChange({ ...val, detail: d });
+  const btnCls = (active, color = "#C97D63") =>
+    `px-3 py-1 rounded-lg text-xs font-medium border transition ${
+      active
+        ? `bg-[${color}] text-white border-transparent`
+        : "bg-white text-[#7A726D] border-[#EBE8E3] hover:bg-[#FDFDF9]"
+    }`;
+  return (
+    <div className="p-3 rounded-lg bg-white border border-[#EBE8E3]">
+      <p className="text-sm font-medium text-[#2D2825]">{q.label}</p>
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setVal("sim")}
+          style={
+            val.value === "sim"
+              ? { background: "#C97D63", color: "#fff", borderColor: "transparent" }
+              : {}
+          }
+          className={btnCls(val.value === "sim")}
+        >
+          Sim
+        </button>
+        <button
+          type="button"
+          onClick={() => setVal("nao")}
+          style={
+            val.value === "nao"
+              ? { background: "#5C7053", color: "#fff", borderColor: "transparent" }
+              : {}
+          }
+          className={btnCls(val.value === "nao")}
+        >
+          Não
+        </button>
+        {q.hasUnknown && (
+          <button
+            type="button"
+            onClick={() => setVal("nao_sabe")}
+            style={
+              val.value === "nao_sabe"
+                ? { background: "#7A726D", color: "#fff", borderColor: "transparent" }
+                : {}
+            }
+            className={btnCls(val.value === "nao_sabe")}
+          >
+            Não sabe
+          </button>
+        )}
+      </div>
+      {val.value === "sim" && q.detail && (
+        <Input
+          className="mt-2"
+          placeholder={q.detail}
+          value={val.detail || ""}
+          onChange={(e) => setDetail(e.target.value)}
+        />
+      )}
+      {val.value === "sim" && q.simHint && (
+        <p className="text-xs text-[#C97D63] mt-2 font-medium">{q.simHint}</p>
+      )}
+    </div>
+  );
+};
+
 const emptyPatient = {
   parent_name: "",
   child_name: "",
   phone: "",
-  comorbidades: "",
+  anamnese: {},
   email: "",
   birth_date: "",
   notes: "",
@@ -480,7 +583,7 @@ export default function Prontuario() {
               Novo prontuário
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-heading">
                 {editing ? "Editar prontuário" : "Novo prontuário"}
@@ -513,16 +616,27 @@ export default function Prontuario() {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <Label>Comorbidades</Label>
-                  <Textarea
-                    data-testid="form-comorbidades"
-                    rows={3}
-                    placeholder="Alergias, doenças, medicamentos em uso..."
-                    value={pForm.comorbidades}
-                    onChange={(e) =>
-                      setPForm({ ...pForm, comorbidades: e.target.value })
-                    }
-                  />
+                  <Label className="text-base font-heading text-[#C97D63]">
+                    Anamnese
+                  </Label>
+                  <p className="text-xs text-[#7A726D] mt-1 mb-3">
+                    Marque "Sim" nos itens que o paciente apresentar.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {ANAMNESE_QUESTIONS.map((q) => (
+                      <AnamneseQuestion
+                        key={q.key}
+                        q={q}
+                        value={(pForm.anamnese || {})[q.key]}
+                        onChange={(v) =>
+                          setPForm({
+                            ...pForm,
+                            anamnese: { ...(pForm.anamnese || {}), [q.key]: v },
+                          })
+                        }
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -583,8 +697,26 @@ export default function Prontuario() {
                         "—"
                       )}
                     </td>
-                    <td className="py-3 px-4 text-xs text-[#7A726D] max-w-xs truncate">
-                      {p.comorbidades || "—"}
+                    <td className="py-3 px-4 text-xs text-[#7A726D] max-w-xs">
+                      {(() => {
+                        const a = p.anamnese || {};
+                        const positives = Object.keys(a).filter(
+                          (k) => a[k] && a[k].value === "sim"
+                        );
+                        if (positives.length === 0 && !p.comorbidades) return "—";
+                        if (positives.length > 0) {
+                          return (
+                            <span className="bg-[#FBE7E7] text-[#D06B6B] border border-[#F0CBCB] px-2 py-1 rounded-full text-xs font-medium">
+                              {positives.length} item(s) positivo(s)
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="truncate inline-block max-w-full">
+                            {p.comorbidades}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className="inline-block bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1] px-2 py-1 rounded-full text-xs font-medium">
@@ -656,16 +788,59 @@ export default function Prontuario() {
                       <p className="font-medium">{detailPatient.phone}</p>
                     </div>
                   )}
-                  {detailPatient.comorbidades && (
-                    <div className="md:col-span-3">
-                      <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
-                        Comorbidades
-                      </p>
-                      <p className="text-sm text-[#2D2825] whitespace-pre-wrap">
-                        {detailPatient.comorbidades}
-                      </p>
-                    </div>
-                  )}
+                  {(() => {
+                    const a = detailPatient.anamnese || {};
+                    const positives = ANAMNESE_QUESTIONS.filter(
+                      (q) => a[q.key] && a[q.key].value === "sim"
+                    );
+                    const unknowns = ANAMNESE_QUESTIONS.filter(
+                      (q) => a[q.key] && a[q.key].value === "nao_sabe"
+                    );
+                    if (positives.length === 0 && unknowns.length === 0 && !detailPatient.comorbidades) {
+                      return null;
+                    }
+                    return (
+                      <div className="md:col-span-3">
+                        <p className="text-[11px] uppercase tracking-widest text-[#7A726D] mb-2">
+                          Anamnese — pontos de atenção
+                        </p>
+                        {detailPatient.comorbidades && (
+                          <p className="text-sm text-[#2D2825] whitespace-pre-wrap mb-2 italic">
+                            {detailPatient.comorbidades}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          {positives.map((q) => {
+                            const detail = a[q.key]?.detail;
+                            return (
+                              <div
+                                key={q.key}
+                                className="px-3 py-1.5 rounded-lg bg-[#FBE7E7] border border-[#F0CBCB] text-xs"
+                              >
+                                <span className="font-medium text-[#D06B6B]">
+                                  {q.label.replace("?", "")}
+                                </span>
+                                {detail && (
+                                  <span className="text-[#7A726D] ml-1">— {detail}</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {unknowns.map((q) => (
+                            <div
+                              key={q.key}
+                              className="px-3 py-1.5 rounded-lg bg-[#F5F1ED] border border-[#EBE8E3] text-xs"
+                            >
+                              <span className="font-medium text-[#7A726D]">
+                                {q.label.replace("?", "")}
+                              </span>
+                              <span className="text-[#7A726D] ml-1">— não sabe</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
