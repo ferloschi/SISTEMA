@@ -857,6 +857,61 @@ async def mark_called(appt_id: str):
     return {"ok": True}
 
 
+@api_router.post("/appointments/{appt_id}/mark-pending")
+async def mark_pending(appt_id: str):
+    """Reset a post-sale reminder back to pending (undo)."""
+    res = await db.appointments.update_one(
+        {"id": appt_id}, {"$set": {"reminder_status": "pendente"}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Agendamento não encontrado")
+    return {"ok": True}
+
+
+@api_router.get("/post-sale")
+async def list_post_sale(status: Optional[str] = Query(None)):
+    """List all appointments with their post-sale info.
+
+    `status` filter values: pendente, contatado, atrasado, all.
+    Atrasado = pendente AND post_sale_date < today.
+    """
+    today_iso = date.today().isoformat()
+    query: Dict[str, Any] = {
+        "post_sale_date": {"$ne": ""},
+        "status": {"$ne": "cancelado"},
+    }
+    if status == "pendente":
+        query["reminder_status"] = "pendente"
+    elif status == "contatado":
+        query["reminder_status"] = "contatado"
+    elif status == "atrasado":
+        query["reminder_status"] = "pendente"
+        query["post_sale_date"] = {"$lt": today_iso, "$ne": ""}
+    # "all" or None: no extra filter
+
+    items = await db.appointments.find(query, {"_id": 0}).sort(
+        "post_sale_date", -1
+    ).to_list(2000)
+
+    # Enrich with patient phone/email
+    pids = list({i.get("patient_id") for i in items if i.get("patient_id")})
+    info_map: Dict[str, Dict[str, str]] = {}
+    if pids:
+        async for p in db.patients.find(
+            {"id": {"$in": pids}},
+            {"_id": 0, "id": 1, "phone": 1, "email": 1},
+        ):
+            info_map[p["id"]] = {
+                "phone": p.get("phone", ""),
+                "email": p.get("email", ""),
+            }
+    for i in items:
+        info = info_map.get(i.get("patient_id") or "", {})
+        i["patient_phone"] = info.get("phone", "")
+        i["patient_email"] = info.get("email", "")
+    return items
+
+
 @api_router.get("/reports/monthly")
 async def reports_monthly(year: int = Query(..., description="Year, e.g. 2026")):
     """Aggregated monthly report for given year."""

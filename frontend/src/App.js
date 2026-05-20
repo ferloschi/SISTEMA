@@ -11,6 +11,7 @@ import Gestao from "@/pages/Gestao";
 import GestaoFinanceira from "@/pages/GestaoFinanceira";
 import Precificacao from "@/pages/Precificacao";
 import Etiquetas from "@/pages/Etiquetas";
+import PosVenda from "@/pages/PosVenda";
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
             <Route path="/gestao" element={<Gestao />} />
             <Route path="/financeiro" element={<GestaoFinanceira />} />
             <Route path="/etiquetas" element={<Etiquetas />} />
+            <Route path="/pos-venda" element={<PosVenda />} />
           </Route>
         </Routes>
       </BrowserRouter>

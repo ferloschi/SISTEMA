@@ -7,6 +7,7 @@ import {
   TrendingUp,
   Calculator,
   Tag,
+  HeartPulse,
   Sparkles,
 } from "lucide-react";
 
@@ -16,6 +17,7 @@ const navItems = [
   { to: "/etiquetas", label: "Etiquetas", icon: Tag, testid: "sidebar-nav-etiquetas" },
   { to: "/precificacao", label: "Precificação", icon: Calculator, testid: "sidebar-nav-precificacao" },
   { to: "/prontuario", label: "Prontuário", icon: ClipboardList, testid: "sidebar-nav-prontuario" },
+  { to: "/pos-venda", label: "Pós-venda", icon: HeartPulse, testid: "sidebar-nav-pos-venda" },
   { to: "/gestao", label: "Gestão Administrativa", icon: Wallet, testid: "sidebar-nav-gestao" },
   { to: "/financeiro", label: "Gestão Financeira", icon: TrendingUp, testid: "sidebar-nav-financeiro" },
 ];
@@ -27,6 +29,7 @@ const pageTitle = {
   "/precificacao": "Precificação de Procedimentos",
   "/prontuario": "Prontuário",
   "/prontuarios": "Prontuário",
+  "/pos-venda": "Acompanhamento Pós-venda",
   "/agendamento": "Agendamento",
   "/vendas": "Vendas",
   "/gestao": "Gestão Administrativa",
