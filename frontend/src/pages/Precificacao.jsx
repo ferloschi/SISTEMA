@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, X, Calculator, Droplet } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Calculator } from "lucide-react";
 
 const emptyItem = { product_id: "", name: "", qty: 1, unit_cost: 0 };
 
@@ -35,8 +34,6 @@ const emptyForm = {
   manual_price: 0,
   active: true,
 };
-
-const emptyInsumoForm = { name: "", purchase_value: 0, notes: "" };
 
 const computePreview = (form) => {
   const items_cost = form.items.reduce(
@@ -60,10 +57,6 @@ export default function Precificacao() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
-
-  const [insumoOpen, setInsumoOpen] = useState(false);
-  const [editingInsumo, setEditingInsumo] = useState(null);
-  const [insumoForm, setInsumoForm] = useState(emptyInsumoForm);
 
   const load = async () => {
     const [p, pr, ins] = await Promise.all([
@@ -189,76 +182,15 @@ export default function Precificacao() {
     load();
   };
 
-  // ===== Insumos =====
-  const openNewInsumo = () => {
-    setEditingInsumo(null);
-    setInsumoForm(emptyInsumoForm);
-    setInsumoOpen(true);
-  };
-  const openEditInsumo = (ins) => {
-    setEditingInsumo(ins);
-    setInsumoForm({ ...emptyInsumoForm, ...ins });
-    setInsumoOpen(true);
-  };
-  const submitInsumo = async () => {
-    if (!insumoForm.name) {
-      toast.error("Informe o nome do insumo.");
-      return;
-    }
-    const payload = {
-      name: insumoForm.name,
-      purchase_value: Number(insumoForm.purchase_value) || 0,
-      notes: insumoForm.notes,
-    };
-    try {
-      if (editingInsumo) {
-        await api.put(`/insumos/${editingInsumo.id}`, payload);
-        toast.success("Insumo atualizado");
-      } else {
-        await api.post("/insumos", payload);
-        toast.success("Insumo cadastrado");
-      }
-      setInsumoOpen(false);
-      load();
-    } catch {
-      toast.error("Erro ao salvar insumo");
-    }
-  };
-  const removeInsumo = async (ins) => {
-    if (!window.confirm(`Excluir insumo "${ins.name}"?`)) return;
-    await api.delete(`/insumos/${ins.id}`);
-    toast.success("Insumo excluído");
-    load();
-  };
-
   return (
     <div className="space-y-6" data-testid="precificacao-page">
-      <Tabs defaultValue="procedimentos">
-        <TabsList className="bg-[#F2E4DF] rounded-xl p-1">
-          <TabsTrigger
-            value="procedimentos"
-            className="data-[state=active]:bg-white data-[state=active]:text-[#C97D63] rounded-lg"
-            data-testid="tab-procedimentos-prec"
-          >
-            Procedimentos
-          </TabsTrigger>
-          <TabsTrigger
-            value="insumos"
-            className="data-[state=active]:bg-white data-[state=active]:text-[#C97D63] rounded-lg"
-            data-testid="tab-insumos"
-          >
-            Insumos
-          </TabsTrigger>
-        </TabsList>
-
-        {/* ========= PROCEDIMENTOS TAB ========= */}
-        <TabsContent value="procedimentos" className="space-y-6 mt-6">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-[#7A726D] max-w-2xl">
-              Monte o kit de cada procedimento (joia + insumos como algodão, agulha, cateter...)
-              e o sistema calcula o custo total e sugere o preço de venda usando custos
-              indiretos e margem de lucro.
-            </p>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-[#7A726D] max-w-2xl">
+            Monte o kit de cada procedimento (joia + insumos como algodão, agulha, cateter...)
+            e o sistema calcula o custo total e sugere o preço de venda usando custos
+            indiretos e margem de lucro.
+          </p>
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
                 <Button
@@ -577,134 +509,7 @@ export default function Precificacao() {
               ))}
             </div>
           )}
-        </TabsContent>
-
-        {/* ========= INSUMOS TAB ========= */}
-        <TabsContent value="insumos" className="space-y-4 mt-6">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-[#7A726D] max-w-2xl">
-              Cadastre os insumos usados nos procedimentos (algodão, agulha, gaze, etc.) com seu
-              valor de compra. Estes insumos ficam disponíveis ao montar o kit dos procedimentos.
-            </p>
-            <Dialog open={insumoOpen} onOpenChange={setInsumoOpen}>
-              <DialogTrigger asChild>
-                <Button
-                  onClick={openNewInsumo}
-                  data-testid="insumo-new-btn"
-                  className="bg-[#C97D63] hover:bg-[#B36B53] text-white rounded-xl"
-                >
-                  <Plus className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                  Novo insumo
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle className="font-heading">
-                    {editingInsumo ? "Editar insumo" : "Novo insumo"}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-2">
-                  <div>
-                    <Label>Nome *</Label>
-                    <Input
-                      data-testid="insumo-form-name"
-                      value={insumoForm.name}
-                      onChange={(e) =>
-                        setInsumoForm({ ...insumoForm, name: e.target.value })
-                      }
-                      placeholder="Ex: Algodão"
-                    />
-                  </div>
-                  <div>
-                    <Label>Valor de compra (R$)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      data-testid="insumo-form-value"
-                      value={insumoForm.purchase_value}
-                      onChange={(e) =>
-                        setInsumoForm({ ...insumoForm, purchase_value: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <Label>Observações</Label>
-                    <Input
-                      value={insumoForm.notes}
-                      onChange={(e) =>
-                        setInsumoForm({ ...insumoForm, notes: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setInsumoOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button
-                    onClick={submitInsumo}
-                    data-testid="insumo-form-submit"
-                    className="bg-[#C97D63] hover:bg-[#B36B53] text-white"
-                  >
-                    Salvar
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          {insumos.length === 0 ? (
-            <div className="brinquinho-card p-10 text-center text-[#7A726D]">
-              <Droplet className="w-10 h-10 mx-auto text-[#C97D63] mb-3" strokeWidth={1.5} />
-              <p className="font-medium text-[#2D2825]">Nenhum insumo cadastrado ainda.</p>
-            </div>
-          ) : (
-            <div className="brinquinho-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-[#FDFDF9] border-b border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
-                    <th className="py-3 px-4 text-left">Insumo</th>
-                    <th className="py-3 px-4 text-right">Valor de compra</th>
-                    <th className="py-3 px-4 text-left">Observações</th>
-                    <th className="py-3 px-4 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {insumos.map((ins) => (
-                    <tr
-                      key={ins.id}
-                      className="border-b border-[#EBE8E3] hover:bg-[#FDFDF9]/60"
-                      data-testid={`insumo-row-${ins.id}`}
-                    >
-                      <td className="py-3 px-4 font-medium">{ins.name}</td>
-                      <td className="py-3 px-4 text-right">
-                        {formatBRL(ins.purchase_value)}
-                      </td>
-                      <td className="py-3 px-4 text-xs text-[#7A726D]">{ins.notes || "—"}</td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="inline-flex gap-2">
-                          <button
-                            onClick={() => openEditInsumo(ins)}
-                            className="p-2 rounded-lg hover:bg-[#F2E4DF] text-[#7A726D] hover:text-[#C97D63]"
-                          >
-                            <Pencil className="w-4 h-4" strokeWidth={1.5} />
-                          </button>
-                          <button
-                            onClick={() => removeInsumo(ins)}
-                            className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
-                          >
-                            <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+      </div>
     </div>
   );
 }

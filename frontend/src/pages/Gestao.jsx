@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, formatBRL, formatDate, PROCEDURE_TYPES } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,11 @@ const monthAgoISO = () => {
 };
 
 export default function Gestao() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get("tab");
+  const validTabs = ["financeiro", "procedimentos", "pagamentos"];
+  const activeTab = validTabs.includes(tabFromUrl) ? tabFromUrl : "financeiro";
+
   const [methods, setMethods] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -170,7 +176,11 @@ export default function Gestao() {
 
   return (
     <div className="space-y-6" data-testid="gestao-page">
-      <Tabs defaultValue="financeiro" className="w-full">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}
+        className="w-full"
+      >
         <TabsList className="bg-[#F2E4DF] rounded-xl p-1">
           <TabsTrigger
             value="financeiro"
