@@ -254,6 +254,64 @@ export default function Etiquetas() {
             </CardContent>
           </Card>
         )}
+
+        {/* Abbreviation legend */}
+        <Card className="border-[#EBE8E3] mt-6" data-testid="etiquetas-legenda-card">
+          <CardHeader>
+            <CardTitle className="font-heading text-base text-[#2D2825]">
+              Legenda das abreviações
+            </CardTitle>
+            <p className="text-xs text-[#7A726D]">
+              Como o espaço da etiqueta é pequeno, material e tamanho são abreviados na impressão.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="text-xs uppercase tracking-wider text-[#7A726D] mb-2">
+                  Material
+                </h4>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                  {Object.entries(MATERIAL_ABBR).map(([full, abbr]) => (
+                    <div
+                      key={full}
+                      className="flex items-baseline gap-2 text-sm"
+                      data-testid={`legenda-material-${abbr}`}
+                    >
+                      <span className="font-mono font-semibold text-[#C97D63] min-w-[2.4rem]">
+                        {abbr}
+                      </span>
+                      <span className="text-[#2D2825]">{full}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-xs uppercase tracking-wider text-[#7A726D] mb-2">
+                  Tamanho
+                </h4>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono font-semibold text-[#C97D63] min-w-[2.4rem]">E</span>
+                    <span className="text-[#2D2825]">Espessura (mm)</span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono font-semibold text-[#C97D63] min-w-[2.4rem]">H</span>
+                    <span className="text-[#2D2825]">Haste (mm)</span>
+                  </div>
+                  <div className="mt-3 p-3 bg-[#FBF6F2] rounded-lg border border-[#EBE8E3]">
+                    <p className="text-xs text-[#7A726D] mb-1">Exemplo</p>
+                    <p className="text-sm text-[#2D2825]">
+                      <span className="text-[#7A726D]">"1.2mm espessura x 8mm haste"</span>{" "}
+                      →{" "}
+                      <span className="font-mono font-semibold text-[#C97D63]">1.2E x 8H</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Hidden print area — rendered with exact mm units */}
