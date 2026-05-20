@@ -109,7 +109,7 @@ export default function Etiquetas() {
                 </CardTitle>
                 <p className="text-sm text-[#7A726D] mt-1">
                   Selecione os produtos e a quantidade de etiquetas. Tamanho fixo:{" "}
-                  <strong>95mm × 12mm</strong> (horizontal, com aba à direita).
+                  <strong>95mm × 12mm</strong> — 50mm com texto (duas metades de 25mm) + 45mm de cauda em branco.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -237,7 +237,7 @@ export default function Etiquetas() {
                 Pré-visualização
               </CardTitle>
               <p className="text-xs text-[#7A726D]">
-                Cada etiqueta mede exatamente 95mm × 12mm. A aba à direita exibe o SKU em vertical.
+                Cada etiqueta mede 95mm × 12mm: 50mm de área de texto (dividida em duas metades de 25mm por uma linha picotada) + 45mm de cauda em branco à direita.
               </p>
             </CardHeader>
             <CardContent>
@@ -282,83 +282,122 @@ const labelBaseStyle = {
   overflow: "hidden",
 };
 
-const mainAreaStyle = {
-  flex: 1,
+// Text area on the left: 50mm wide. Split into two halves of 25mm by a
+// vertical perforation line in the middle.
+const textAreaStyle = {
+  width: "50mm",
+  height: "12mm",
   display: "flex",
-  flexDirection: "column",
-  justifyContent: "space-between",
-  padding: "0.8mm 1.5mm",
-  borderRight: "0.2mm dashed #000",
-  minWidth: 0,
+  flexDirection: "row",
+  boxSizing: "border-box",
 };
 
-const flapStyle = {
-  width: "13mm",
+const halfStyle = {
+  width: "25mm",
+  height: "12mm",
+  boxSizing: "border-box",
+  padding: "0.6mm 1mm",
   display: "flex",
-  alignItems: "center",
+  flexDirection: "column",
   justifyContent: "center",
-  padding: "0.5mm",
+  gap: "0.2mm",
+  overflow: "hidden",
+};
+
+const perforationStyle = {
+  width: 0,
+  borderLeft: "0.25mm dashed #000",
+  height: "12mm",
+};
+
+// Right tail: 45mm blank area (no text). Just empty space so the die-cut
+// shape of the roll is respected — the printer simply prints nothing here.
+const tailStyle = {
+  width: "45mm",
+  height: "12mm",
 };
 
 const lineStyle = {
-  lineHeight: "3mm",
-  fontSize: "2.4mm",
+  lineHeight: "2.6mm",
+  fontSize: "2mm",
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
 };
 
+// Material abbreviations. Codes match the user's request (T, AC...)
+const MATERIAL_ABBR = {
+  "Aço cirúrgico": "AC",
+  "Aço inoxidável": "AI",
+  "Titânio": "T",
+  "Ouro 18k": "O18",
+  "Ouro 24k": "O24",
+  "Folheado a ouro": "FO",
+  "Banhado a ouro": "BO",
+  "Banhado a prata": "BP",
+  "Prata 925": "P925",
+  "Niobium": "N",
+  "Plástico": "PL",
+  "Acrílico": "AR",
+  "Bioplast": "BI",
+  "Algodão": "ALG",
+  "Tecido": "TC",
+  "Papel": "PP",
+  "Metalizado": "MT",
+};
+
 function abbreviateMaterial(m = "") {
-  return m
-    .replace("Aço cirúrgico", "Aço Cir.")
-    .replace("Aço inoxidável", "Aço Inox")
-    .replace("Folheado a ouro", "Folh. Ouro")
-    .replace("Banhado a ouro", "Banh. Ouro")
-    .replace("Banhado a prata", "Banh. Prata");
+  if (!m) return "";
+  if (MATERIAL_ABBR[m]) return MATERIAL_ABBR[m];
+  // Fallback: take first 3 characters uppercased.
+  return m.slice(0, 3).toUpperCase();
 }
 
-function PrintLabel({ product }) {
-  const material = abbreviateMaterial(product.material || "—");
-  const size = product.size || "—";
-  const sku = product.sku || "—";
-  const price = formatBRL(product.sale_value);
+// Size abbreviation:
+// "1.2mm espessura x 8mm haste" -> "1.2E x 8H"
+function abbreviateSize(s = "") {
+  if (!s) return "";
+  let out = s
+    .replace(/(\d+(?:[.,]\d+)?)\s*mm\s*espessura/gi, "$1E")
+    .replace(/(\d+(?:[.,]\d+)?)\s*mm\s*haste/gi, "$1H")
+    .replace(/\s+/g, " ")
+    .trim();
+  return out;
+}
 
+function LabelHalf({ product }) {
+  const material = abbreviateMaterial(product.material || "");
+  const size = abbreviateSize(product.size || "");
+  const sku = product.sku || "";
+  const price = formatBRL(product.sale_value);
   return (
-    <div className="print-label" style={labelBaseStyle} data-testid="print-label">
-      <div style={mainAreaStyle}>
-        <div style={{ ...lineStyle, fontWeight: 700 }} title={material}>
-          {material}
-        </div>
-        <div style={lineStyle} title={size}>
-          {size}
-        </div>
-        <div style={{ ...lineStyle, fontWeight: 700 }}>{price}</div>
+    <div style={halfStyle}>
+      <div style={{ ...lineStyle, fontWeight: 700 }} title={product.material}>
+        {material || "—"} {size && <span style={{ fontWeight: 400 }}>{size}</span>}
       </div>
-      <div style={flapStyle}>
-        <div
-          style={{
-            transform: "rotate(-90deg)",
-            transformOrigin: "center",
-            fontSize: "2mm",
-            letterSpacing: "0.1mm",
-            whiteSpace: "nowrap",
-            fontWeight: 600,
-          }}
-        >
-          {sku}
-        </div>
+      <div style={{ ...lineStyle, fontWeight: 700 }}>{price}</div>
+      <div style={{ ...lineStyle, fontSize: "1.7mm" }} title={sku}>
+        {sku || "—"}
       </div>
     </div>
   );
 }
 
-function LabelPreview({ product }) {
-  // Same visual as PrintLabel, but with a border so it is visible on screen.
-  const material = abbreviateMaterial(product.material || "—");
-  const size = product.size || "—";
-  const sku = product.sku || "—";
-  const price = formatBRL(product.sale_value);
+function PrintLabel({ product }) {
+  return (
+    <div className="print-label" style={labelBaseStyle} data-testid="print-label">
+      <div style={textAreaStyle}>
+        <LabelHalf product={product} />
+        <div style={perforationStyle} />
+        <LabelHalf product={product} />
+      </div>
+      <div style={tailStyle} />
+    </div>
+  );
+}
 
+function LabelPreview({ product }) {
+  // Same visual as PrintLabel, but with borders so it is visible on screen.
   return (
     <div
       style={{
@@ -368,25 +407,19 @@ function LabelPreview({ product }) {
       }}
       data-testid="etiquetas-preview-item"
     >
-      <div style={mainAreaStyle}>
-        <div style={{ ...lineStyle, fontWeight: 700 }}>{material}</div>
-        <div style={lineStyle}>{size}</div>
-        <div style={{ ...lineStyle, fontWeight: 700 }}>{price}</div>
+      <div style={{ ...textAreaStyle, borderRight: "0.3mm dashed #C97D63" }}>
+        <LabelHalf product={product} />
+        <div style={perforationStyle} />
+        <LabelHalf product={product} />
       </div>
-      <div style={flapStyle}>
-        <div
-          style={{
-            transform: "rotate(-90deg)",
-            transformOrigin: "center",
-            fontSize: "2mm",
-            letterSpacing: "0.1mm",
-            whiteSpace: "nowrap",
-            fontWeight: 600,
-          }}
-        >
-          {sku}
-        </div>
-      </div>
+      <div
+        style={{
+          ...tailStyle,
+          background:
+            "repeating-linear-gradient(45deg, #FBF6F2, #FBF6F2 1mm, #F2E4DF 1mm, #F2E4DF 2mm)",
+        }}
+        title="Cauda em branco (não imprime)"
+      />
     </div>
   );
 }
