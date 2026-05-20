@@ -10,6 +10,7 @@ import Vendas from "@/pages/Vendas";
 import Gestao from "@/pages/Gestao";
 import GestaoFinanceira from "@/pages/GestaoFinanceira";
 import Precificacao from "@/pages/Precificacao";
+import Etiquetas from "@/pages/Etiquetas";
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
             <Route path="/vendas" element={<Vendas />} />
             <Route path="/gestao" element={<Gestao />} />
             <Route path="/financeiro" element={<GestaoFinanceira />} />
+            <Route path="/etiquetas" element={<Etiquetas />} />
           </Route>
         </Routes>
       </BrowserRouter>

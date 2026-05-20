@@ -6,12 +6,14 @@ import {
   Wallet,
   TrendingUp,
   Calculator,
+  Tag,
   Sparkles,
 } from "lucide-react";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, testid: "sidebar-nav-dashboard" },
   { to: "/estoque", label: "Estoque", icon: Package, testid: "sidebar-nav-estoque" },
+  { to: "/etiquetas", label: "Etiquetas", icon: Tag, testid: "sidebar-nav-etiquetas" },
   { to: "/precificacao", label: "Precificação", icon: Calculator, testid: "sidebar-nav-precificacao" },
   { to: "/prontuario", label: "Prontuário", icon: ClipboardList, testid: "sidebar-nav-prontuario" },
   { to: "/gestao", label: "Gestão Administrativa", icon: Wallet, testid: "sidebar-nav-gestao" },
@@ -21,6 +23,7 @@ const navItems = [
 const pageTitle = {
   "/dashboard": "Visão Geral",
   "/estoque": "Controle de Estoque",
+  "/etiquetas": "Etiquetas de Produtos",
   "/precificacao": "Precificação de Procedimentos",
   "/prontuario": "Prontuário",
   "/prontuarios": "Prontuário",
