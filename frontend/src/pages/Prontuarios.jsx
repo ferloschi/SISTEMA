@@ -443,6 +443,51 @@ export default function Prontuario() {
     }));
   };
 
+  // Quick split helpers — operate on the current gross derived from the form.
+  const computeGross = () => {
+    const procValue = Number(procForm.manual_value) || 0;
+    const avulsosValue = (procForm.avulsos || []).reduce(
+      (s, i) => s + Number(i.qty || 0) * Number(i.unit_price || 0),
+      0
+    );
+    return procValue + avulsosValue;
+  };
+
+  const splitFiftyFifty = () => {
+    const gross = computeGross();
+    if (gross <= 0) {
+      toast.error("Defina um valor total antes de dividir");
+      return;
+    }
+    setProcForm((f) => {
+      let arr = [...f.mixed_payments];
+      while (arr.length < 2) arr.push({ ...emptyMixedPayment });
+      const half = Math.round((gross / 2) * 100) / 100;
+      const other = Math.round((gross - half) * 100) / 100;
+      arr[0] = { ...arr[0], amount: String(half) };
+      arr[1] = { ...arr[1], amount: String(other) };
+      return { ...f, mixed_payments: arr };
+    });
+  };
+
+  const fillRemainder = (idx) => {
+    const gross = computeGross();
+    if (gross <= 0) {
+      toast.error("Defina um valor total antes de calcular o restante");
+      return;
+    }
+    setProcForm((f) => {
+      const arr = [...f.mixed_payments];
+      const sumOthers = arr.reduce(
+        (s, p, i) => (i === idx ? s : s + (Number(p.amount) || 0)),
+        0
+      );
+      const remainder = Math.max(0, Math.round((gross - sumOthers) * 100) / 100);
+      arr[idx] = { ...arr[idx], amount: String(remainder) };
+      return { ...f, mixed_payments: arr };
+    });
+  };
+
   const submitProcedure = async () => {
     if (!detailPatient) return;
     if (!procForm.procedure_type) {
@@ -1028,15 +1073,27 @@ export default function Prontuario() {
                     <div className="rounded-xl border border-[#E8CFC1] bg-white p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <Label className="text-[#C97D63]">Formas de pagamento</Label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={addMixedPayment}
-                          data-testid="add-mixed-pm-btn"
-                        >
-                          <Plus className="w-3 h-3 mr-1" /> Adicionar forma
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={splitFiftyFifty}
+                            data-testid="split-5050-btn"
+                            title="Dividir igualmente entre as duas primeiras formas"
+                          >
+                            50 / 50
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={addMixedPayment}
+                            data-testid="add-mixed-pm-btn"
+                          >
+                            <Plus className="w-3 h-3 mr-1" /> Adicionar forma
+                          </Button>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         {procForm.mixed_payments.map((mp, idx) => {
@@ -1073,15 +1130,28 @@ export default function Prontuario() {
                               </div>
                               <div className="col-span-6 md:col-span-3">
                                 <Label className="text-xs">Valor (R$)</Label>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  data-testid={`mixed-amount-${idx}`}
-                                  value={mp.amount}
-                                  onChange={(e) =>
-                                    updateMixedPayment(idx, "amount", e.target.value)
-                                  }
-                                />
+                                <div className="flex gap-1">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    data-testid={`mixed-amount-${idx}`}
+                                    value={mp.amount}
+                                    onChange={(e) =>
+                                      updateMixedPayment(idx, "amount", e.target.value)
+                                    }
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fillRemainder(idx)}
+                                    data-testid={`fill-remainder-${idx}`}
+                                    title="Preencher com o valor restante"
+                                    className="shrink-0 px-2 text-xs"
+                                  >
+                                    Restante
+                                  </Button>
+                                </div>
                               </div>
                               {isCard && (
                                 <>
