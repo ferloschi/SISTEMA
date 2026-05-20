@@ -41,6 +41,13 @@
 - ✅ Integração com **Vendas**: dropdown "Carregar kit de procedimento" preenche os itens automaticamente
 - ✅ Testes backend: 35/35 (100%, zero regressões)
 
+### Iteração 3 (2026-02-20)
+- ✅ **Módulo Etiquetas** (`/etiquetas`): impressão de etiquetas físicas para joias do estoque
+- ✅ Layout estrito 95mm × 12mm horizontal, com aba lateral à direita exibindo SKU em vertical
+- ✅ Campos impressos: Material (abreviado), Tamanho, Valor de Venda + SKU no flap
+- ✅ Seleção múltipla com quantidade por produto e contador total
+- ✅ Pré-visualização em tela e CSS `@media print` com `@page size: 95mm 12mm` para rolo contínuo
+
 ## Prioritized Backlog (P0 / P1 / P2)
 ### P0 — Pendente confirmação do usuário
 - Envio real de lembretes (Email via Resend ou WhatsApp via Twilio) — aguardando chaves
