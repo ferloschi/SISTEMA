@@ -119,7 +119,7 @@ class Appointment(BaseModel):
     status: str = "agendado"  # agendado, realizado, cancelado
     notes: Optional[str] = ""
     post_sale_date: Optional[str] = ""  # auto +45 days from date
-    reminder_status: str = "pendente"  # pendente, enviado
+    reminder_status: str = "pendente"  # pendente, contatado, enviado
     created_at: str = Field(default_factory=now_utc_iso)
 
 
@@ -830,7 +830,31 @@ async def pending_reminders():
         "reminder_status": "pendente",
         "status": {"$ne": "cancelado"},
     }, {"_id": 0}).sort("post_sale_date", 1).to_list(500)
+    # Enrich with patient phone (and email) from the patients collection.
+    patient_ids = list({i.get("patient_id") for i in items if i.get("patient_id")})
+    phone_map: Dict[str, Dict[str, str]] = {}
+    if patient_ids:
+        async for p in db.patients.find(
+            {"id": {"$in": patient_ids}},
+            {"_id": 0, "id": 1, "phone": 1, "email": 1},
+        ):
+            phone_map[p["id"]] = {"phone": p.get("phone", ""), "email": p.get("email", "")}
+    for i in items:
+        info = phone_map.get(i.get("patient_id") or "", {})
+        i["patient_phone"] = info.get("phone", "")
+        i["patient_email"] = info.get("email", "")
     return items
+
+
+@api_router.post("/appointments/{appt_id}/mark-called")
+async def mark_called(appt_id: str):
+    """Mark a post-sale reminder as already contacted (called)."""
+    res = await db.appointments.update_one(
+        {"id": appt_id}, {"$set": {"reminder_status": "contatado"}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Agendamento não encontrado")
+    return {"ok": True}
 
 
 @api_router.get("/reports/monthly")
