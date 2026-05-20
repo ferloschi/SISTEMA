@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, formatBRL } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { toast } from "sonner";
 import { Printer, Search, Plus, Minus, Tag } from "lucide-react";
 
 export default function Etiquetas() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
   // map: { [productId]: quantity }
@@ -25,6 +27,32 @@ export default function Etiquetas() {
   useEffect(() => {
     load();
   }, []);
+
+  // When arriving from Estoque with ?p=<id>&auto=1, auto-select 1 copy
+  // of that product and immediately open the print dialog.
+  useEffect(() => {
+    const pid = searchParams.get("p");
+    const auto = searchParams.get("auto");
+    if (!pid || products.length === 0) return;
+    const target = products.find((p) => p.id === pid);
+    if (!target) {
+      toast.error("Produto não encontrado");
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    setSelected((prev) => ({ ...prev, [pid]: Math.max(prev[pid] || 0, 1) }));
+    if (auto === "1") {
+      // Give React time to render the print-area before window.print
+      const t = setTimeout(() => {
+        window.print();
+        setSearchParams({}, { replace: true });
+      }, 400);
+      return () => clearTimeout(t);
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

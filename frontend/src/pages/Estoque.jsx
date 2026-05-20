@@ -28,7 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, AlertTriangle, Printer } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const emptyForm = {
   sku: "",
@@ -69,6 +70,7 @@ const SelectOrNone = ({ value, onValueChange, options, placeholder, testid }) =>
 );
 
 export default function Estoque() {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
@@ -374,6 +376,14 @@ export default function Estoque() {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="inline-flex gap-2">
+                        <button
+                          data-testid={`print-label-${p.id}`}
+                          onClick={() => navigate(`/etiquetas?p=${p.id}&auto=1`)}
+                          title="Imprimir etiqueta deste produto"
+                          className="p-2 rounded-lg hover:bg-[#F2E4DF] text-[#7A726D] hover:text-[#C97D63]"
+                        >
+                          <Printer className="w-4 h-4" strokeWidth={1.5} />
+                        </button>
                         <button
                           data-testid={`edit-${p.id}`}
                           onClick={() => openEdit(p)}
