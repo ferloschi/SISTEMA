@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Mail, KeyRound, Shield, RotateCcw } from "lucide-react";
+import { Mail, KeyRound, Shield } from "lucide-react";
 
 export default function Configuracoes() {
   const { user, refreshMe, logout } = useAuth();
@@ -91,22 +91,6 @@ export default function Configuracoes() {
     }
   };
 
-  const resetToEnv = async () => {
-    if (
-      !window.confirm(
-        "Descartar as credenciais alteradas no app e voltar para as definidas no .env do servidor?"
-      )
-    )
-      return;
-    try {
-      await api.post("/auth/reset-to-env");
-      toast.success("Credenciais resetadas para o .env. Faça login novamente.");
-      setTimeout(() => logout(), 1000);
-    } catch (err) {
-      toast.error("Erro ao resetar");
-    }
-  };
-
   return (
     <div className="space-y-6 max-w-3xl" data-testid="configuracoes-page">
       {/* Sessão atual */}
@@ -118,41 +102,16 @@ export default function Configuracoes() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-[#7A726D]">
-                Administrador conectado
-              </p>
-              <p
-                className="text-base font-medium text-[#2D2825]"
-                data-testid="current-admin-email"
-              >
-                {info.email || (user && user.email) || "—"}
-              </p>
-              <p className="text-xs text-[#7A726D] mt-1">
-                Origem das credenciais:{" "}
-                <span
-                  className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border ${
-                    info.source === "db"
-                      ? "bg-[#E5F1E0] text-[#5C7053] border-[#C7DBBE]"
-                      : "bg-[#F2E4DF] text-[#C97D63] border-[#E8CFC1]"
-                  }`}
-                >
-                  {info.source === "db" ? "Banco de dados" : "Arquivo .env"}
-                </span>
-              </p>
-            </div>
-            {info.source === "db" && (
-              <Button
-                variant="outline"
-                onClick={resetToEnv}
-                data-testid="reset-to-env-btn"
-                className="border-[#EBE8E3]"
-              >
-                <RotateCcw className="w-3.5 h-3.5 mr-1.5" strokeWidth={1.5} />
-                Voltar para credenciais do .env
-              </Button>
-            )}
+          <div>
+            <p className="text-xs uppercase tracking-wider text-[#7A726D]">
+              Administrador conectado
+            </p>
+            <p
+              className="text-base font-medium text-[#2D2825]"
+              data-testid="current-admin-email"
+            >
+              {info.email || (user && user.email) || "—"}
+            </p>
           </div>
         </CardContent>
       </Card>

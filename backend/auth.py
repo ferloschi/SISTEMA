@@ -227,10 +227,4 @@ def build_auth_router(db) -> APIRouter:
         # Token previously issued is still valid for its TTL; client should re-login.
         return {"ok": True, "message": "E-mail atualizado com sucesso.", "email": new_email}
 
-    @router.post("/reset-to-env")
-    async def reset_to_env(_email: str = Depends(require_auth)):
-        """Discard DB overrides and go back to .env credentials."""
-        await db.admin_overrides.delete_one({"_id": "admin"})
-        return {"ok": True, "message": "Credenciais resetadas para o valor do .env."}
-
     return router
