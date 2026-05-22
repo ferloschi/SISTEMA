@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -16,6 +17,8 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+from auth import build_auth_router, decode_token  # noqa: E402
 
 app = FastAPI(title="Dra. Brinquinho API")
 api_router = APIRouter(prefix="/api")
@@ -1064,6 +1067,32 @@ async def root():
 
 
 app.include_router(api_router)
+app.include_router(build_auth_router(db), prefix="/api")
+
+
+@app.middleware("http")
+async def auth_middleware(request, call_next):
+    """Require Bearer token on every /api/* except /api/auth/* and the root."""
+    path = request.url.path
+    method = request.method
+    PUBLIC_PATHS = {"/api/", "/api"}
+    if (
+        method == "OPTIONS"
+        or path.startswith("/api/auth/")
+        or path in PUBLIC_PATHS
+        or not path.startswith("/api/")
+    ):
+        return await call_next(request)
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse({"detail": "Não autenticado."}, status_code=401)
+    token = auth_header[7:]
+    try:
+        decode_token(token)
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useAuth } from "@/lib/auth";
 import {
   LayoutDashboard,
   Package,
@@ -8,23 +9,29 @@ import {
   Calculator,
   Tag,
   HeartPulse,
+  Droplet,
+  Settings,
+  LogOut,
   Sparkles,
 } from "lucide-react";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, testid: "sidebar-nav-dashboard" },
   { to: "/estoque", label: "Estoque", icon: Package, testid: "sidebar-nav-estoque" },
+  { to: "/insumos", label: "Insumos", icon: Droplet, testid: "sidebar-nav-insumos" },
   { to: "/etiquetas", label: "Etiquetas", icon: Tag, testid: "sidebar-nav-etiquetas" },
   { to: "/precificacao", label: "Precificação", icon: Calculator, testid: "sidebar-nav-precificacao" },
   { to: "/prontuario", label: "Prontuário", icon: ClipboardList, testid: "sidebar-nav-prontuario" },
   { to: "/pos-venda", label: "Pós-venda", icon: HeartPulse, testid: "sidebar-nav-pos-venda" },
   { to: "/gestao", label: "Gestão Administrativa", icon: Wallet, testid: "sidebar-nav-gestao" },
   { to: "/financeiro", label: "Gestão Financeira", icon: TrendingUp, testid: "sidebar-nav-financeiro" },
+  { to: "/configuracoes", label: "Configurações", icon: Settings, testid: "sidebar-nav-configuracoes" },
 ];
 
 const pageTitle = {
   "/dashboard": "Visão Geral",
   "/estoque": "Controle de Estoque",
+  "/insumos": "Insumos",
   "/etiquetas": "Etiquetas de Produtos",
   "/precificacao": "Precificação de Procedimentos",
   "/prontuario": "Prontuário",
@@ -34,11 +41,13 @@ const pageTitle = {
   "/vendas": "Vendas",
   "/gestao": "Gestão Administrativa",
   "/financeiro": "Gestão Financeira",
+  "/configuracoes": "Configurações",
 };
 
 export default function Layout() {
   const location = useLocation();
   const title = pageTitle[location.pathname] || "Dra. Brinquinho";
+  const { user, logout } = useAuth();
 
   return (
     <div className="flex min-h-screen bg-[#FDFDF9]">
@@ -61,7 +70,7 @@ export default function Layout() {
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -91,11 +100,31 @@ export default function Layout() {
           })}
         </nav>
 
-        <div className="p-4 m-4 rounded-2xl bg-[#F2E4DF]/60 border border-[#E8CFC1]">
-          <p className="text-xs text-[#7A726D] leading-relaxed">
-            Lembretes de pós-venda são gerados 45 dias após a perfuração.
-          </p>
-        </div>
+        {/* Account / logout */}
+        {user && typeof user === "object" && (
+          <div className="p-4 border-t border-[#EBE8E3]">
+            <div className="flex items-center justify-between gap-2 px-2">
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-widest text-[#7A726D]">Logado como</p>
+                <p
+                  className="text-xs font-medium text-[#2D2825] truncate"
+                  title={user.email}
+                  data-testid="sidebar-user-email"
+                >
+                  {user.email}
+                </p>
+              </div>
+              <button
+                onClick={logout}
+                data-testid="sidebar-logout-btn"
+                title="Sair"
+                className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
+              >
+                <LogOut className="w-4 h-4" strokeWidth={1.5} />
+              </button>
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* Main */}
