@@ -447,7 +447,109 @@ export default function Estoque() {
         </Dialog>
       </div>
 
-      <div className="brinquinho-card overflow-x-auto" data-testid="products-table">
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        {items.length === 0 ? (
+          <div className="brinquinho-card p-10 text-center text-[#7A726D]">
+            Nenhum produto cadastrado.
+          </div>
+        ) : (
+          items.map((p) => {
+            const low = p.stock_qty <= p.min_stock;
+            return (
+              <div
+                key={p.id}
+                data-testid={`product-card-${p.id}`}
+                className="brinquinho-card p-4"
+              >
+                <div className="flex items-start gap-3">
+                  {p.photo ? (
+                    <img
+                      src={p.photo}
+                      alt={p.name}
+                      className="w-16 h-16 rounded-md object-cover border border-[#EBE8E3] shrink-0"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-md border border-dashed border-[#EBE8E3] bg-[#FBF6F2] flex items-center justify-center text-[#C97D63] shrink-0">
+                      <ImageIcon className="w-5 h-5" strokeWidth={1.5} />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-mono text-[10px] text-[#7A726D]">{p.sku}</p>
+                    <p className="font-medium text-[#2D2825] break-words">{p.name}</p>
+                    <span className="inline-block mt-1 bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1] px-2 py-0.5 rounded-full text-[11px] font-medium">
+                      {p.category}
+                    </span>
+                  </div>
+                </div>
+                {(p.material || p.modelo || p.size || p.color || p.fornecedor) && (
+                  <p className="text-xs text-[#7A726D] mt-3 break-words">
+                    {[
+                      p.material,
+                      p.modelo,
+                      p.size,
+                      p.color,
+                      p.fornecedor && `Fornecedor: ${p.fornecedor}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                )}
+                <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[#7A726D]">Compra</p>
+                    <p className="font-medium text-[#2D2825]">{formatBRL(p.purchase_value)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[#7A726D]">Venda</p>
+                    <p className="font-medium text-[#C97D63]">{formatBRL(p.sale_value)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[#7A726D]">Estoque</p>
+                    <p className={`font-medium ${low ? "text-[#D06B6B]" : "text-[#2D2825]"}`}>
+                      {low && (
+                        <AlertTriangle
+                          className="inline w-3 h-3 mr-1 -mt-0.5"
+                          strokeWidth={1.5}
+                        />
+                      )}
+                      {p.stock_qty}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3 pt-3 border-t border-[#EBE8E3]">
+                  <button
+                    onClick={() => navigate(`/etiquetas?p=${p.id}&auto=1`)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 text-xs rounded-lg border border-[#EBE8E3] text-[#7A726D] hover:text-[#C97D63] hover:bg-[#F2E4DF]"
+                  >
+                    <Printer className="w-3.5 h-3.5" strokeWidth={1.5} />
+                    Etiqueta
+                  </button>
+                  <button
+                    onClick={() => openEdit(p)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 text-xs rounded-lg border border-[#EBE8E3] text-[#7A726D] hover:text-[#C97D63] hover:bg-[#F2E4DF]"
+                  >
+                    <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => remove(p)}
+                    className="p-2 rounded-lg border border-[#EBE8E3] text-[#7A726D] hover:text-[#D06B6B] hover:bg-[#FBE7E7]"
+                  >
+                    <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div
+        className="hidden md:block brinquinho-card overflow-x-auto"
+        data-testid="products-table"
+      >
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#FDFDF9] border-b border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">

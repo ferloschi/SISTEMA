@@ -167,7 +167,49 @@ export default function Insumos() {
               </p>
             </div>
           ) : (
-            <div className="overflow-hidden border border-[#EBE8E3] rounded-xl">
+            <>
+              {/* Mobile cards */}
+              <div className="md:hidden space-y-3">
+                {items.map((ins) => (
+                  <div
+                    key={ins.id}
+                    data-testid={`insumo-card-${ins.id}`}
+                    className="border border-[#EBE8E3] rounded-xl p-3 bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-[#2D2825] break-words">
+                          {ins.name}
+                        </p>
+                        {ins.notes && (
+                          <p className="text-xs text-[#7A726D] break-words">{ins.notes}</p>
+                        )}
+                      </div>
+                      <p className="text-sm font-medium text-[#C97D63] shrink-0">
+                        {formatBRL(ins.purchase_value)}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 mt-3 pt-2 border-t border-[#EBE8E3]">
+                      <button
+                        onClick={() => openEdit(ins)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 text-xs rounded-lg border border-[#EBE8E3] text-[#7A726D] hover:text-[#C97D63]"
+                      >
+                        <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => remove(ins)}
+                        className="p-2 rounded-lg border border-[#EBE8E3] text-[#7A726D] hover:text-[#D06B6B] hover:bg-[#FBE7E7]"
+                      >
+                        <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-hidden border border-[#EBE8E3] rounded-xl">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-[#FDFDF9] border-b border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
@@ -216,6 +258,7 @@ export default function Insumos() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>

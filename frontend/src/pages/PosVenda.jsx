@@ -217,7 +217,95 @@ export default function PosVenda() {
               Nenhum lembrete nesta categoria.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              {/* Mobile cards */}
+              <div className="md:hidden space-y-3">
+                {filtered.map((r) => {
+                  const tel = digitsOnly(r.patient_phone);
+                  return (
+                    <div
+                      key={r.id}
+                      data-testid={`posventa-card-${r.id}`}
+                      className="border border-[#EBE8E3] rounded-xl p-4 space-y-2 bg-white"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-[#2D2825] truncate">
+                            {r.patient_name}
+                          </p>
+                          {r.child_name && (
+                            <p className="text-xs text-[#7A726D] truncate">
+                              Criança: {r.child_name}
+                            </p>
+                          )}
+                        </div>
+                        <UrgencyBadge iso={r.post_sale_date} status={r.reminder_status} />
+                      </div>
+                      <p className="text-sm text-[#2D2825]">{r.procedure_type}</p>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-[#7A726D]">Perfuração: {formatDate(r.date)}</span>
+                        <span className="font-medium text-[#C97D63]">
+                          Pós: {formatDate(r.post_sale_date)}
+                        </span>
+                      </div>
+                      {r.patient_phone && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <span className="text-sm text-[#2D2825] truncate">
+                            {r.patient_phone}
+                          </span>
+                          <a
+                            href={`tel:${tel}`}
+                            className="p-1.5 rounded-lg bg-[#F2E4DF] text-[#C97D63]"
+                            title="Ligar"
+                          >
+                            <Phone className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          </a>
+                          <a
+                            href={`https://wa.me/${tel.length === 11 ? "55" + tel : tel}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg bg-[#E5F1E0] text-[#5C7053]"
+                            title="WhatsApp"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          </a>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 pt-2 border-t border-[#EBE8E3]">
+                        {r.reminder_status === "contatado" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => markPending(r.id)}
+                            className="border-[#EBE8E3] text-[#7A726D] hover:text-[#C97D63] flex-1"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 mr-1" strokeWidth={1.5} />
+                            Reabrir
+                          </Button>
+                        ) : (
+                          <button
+                            onClick={() => markCalled(r.id)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-[#E5F1E0] text-[#5C7053] border border-[#C7DBBE]"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                            Já liguei
+                          </button>
+                        )}
+                        <button
+                          onClick={() => remove(r)}
+                          title="Excluir"
+                          className="p-2 rounded-lg border border-[#EBE8E3] text-[#7A726D] hover:text-[#D06B6B] hover:bg-[#FBE7E7]"
+                        >
+                          <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-[#FDFDF9] border-y border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
@@ -318,6 +406,7 @@ export default function PosVenda() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>

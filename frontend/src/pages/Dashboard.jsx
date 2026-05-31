@@ -248,7 +248,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="brinquinho-card p-6" data-testid="reminders-list">
+      <div className="brinquinho-card p-4 sm:p-6" data-testid="reminders-list">
         <h3 className="font-heading text-lg font-semibold text-[#2D2825] mb-1">
           Lembretes de pós-venda pendentes
         </h3>
@@ -258,7 +258,63 @@ export default function Dashboard() {
         {reminders.length === 0 ? (
           <p className="text-sm text-[#7A726D]">Nenhum lembrete pendente nos próximos dias.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Mobile cards */}
+            <div className="md:hidden space-y-3">
+              {reminders.map((r) => {
+                const tel = digitsOnly(r.patient_phone);
+                return (
+                  <div
+                    key={r.id}
+                    data-testid={`reminder-card-${r.id}`}
+                    className="border border-[#EBE8E3] rounded-xl p-3 bg-white space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-[#2D2825] truncate">{r.patient_name}</p>
+                        {r.child_name && (
+                          <p className="text-xs text-[#7A726D] truncate">{r.child_name}</p>
+                        )}
+                      </div>
+                      <UrgencyBadge iso={r.post_sale_date} />
+                    </div>
+                    <p className="text-sm text-[#2D2825]">{r.procedure_type}</p>
+                    <p className="text-xs font-medium text-[#C97D63]">
+                      Pós-venda: {formatDate(r.post_sale_date)}
+                    </p>
+                    {r.patient_phone && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-[#2D2825] truncate">{r.patient_phone}</span>
+                        <a
+                          href={`tel:${tel}`}
+                          className="p-1.5 rounded-lg bg-[#F2E4DF] text-[#C97D63]"
+                        >
+                          <Phone className="w-3.5 h-3.5" strokeWidth={1.5} />
+                        </a>
+                        <a
+                          href={`https://wa.me/${tel.length === 11 ? "55" + tel : tel}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 rounded-lg bg-[#E5F1E0] text-[#5C7053]"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" strokeWidth={1.5} />
+                        </a>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => markCalled(r.id)}
+                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-[#E5F1E0] text-[#5C7053] border border-[#C7DBBE]"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                      Já liguei
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#FDFDF9] border-y border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
@@ -333,6 +389,7 @@ export default function Dashboard() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </div>
