@@ -76,6 +76,7 @@ export default function Estoque() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [photoDragOver, setPhotoDragOver] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
   const load = async () => {
@@ -338,7 +339,35 @@ export default function Estoque() {
               </div>
               <div className="md:col-span-2">
                 <Label>Foto do produto (opcional)</Label>
-                <div className="flex items-center gap-3 mt-1">
+                <div
+                  onPaste={(e) => {
+                    const item = Array.from(e.clipboardData?.items || []).find(
+                      (i) => i.type.startsWith("image/")
+                    );
+                    if (item) {
+                      e.preventDefault();
+                      handlePhotoChange(item.getAsFile());
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setPhotoDragOver(true);
+                  }}
+                  onDragLeave={() => setPhotoDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setPhotoDragOver(false);
+                    const file = e.dataTransfer?.files?.[0];
+                    if (file) handlePhotoChange(file);
+                  }}
+                  tabIndex={0}
+                  data-testid="form-photo-dropzone"
+                  className={`flex items-center gap-3 mt-1 p-3 rounded-lg border-2 border-dashed transition-colors outline-none ${
+                    photoDragOver
+                      ? "border-[#C97D63] bg-[#F2E4DF]"
+                      : "border-transparent focus:border-[#E8CFC1]"
+                  }`}
+                >
                   {form.photo ? (
                     <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-[#EBE8E3] bg-white shrink-0">
                       <img
@@ -380,6 +409,10 @@ export default function Estoque() {
                       onChange={(e) => handlePhotoChange(e.target.files?.[0])}
                     />
                     <p className="text-[11px] text-[#7A726D] mt-1">
+                      Você também pode <strong>arrastar e soltar</strong> uma imagem aqui ou{" "}
+                      <strong>colar (Ctrl+V)</strong> da área de transferência.
+                    </p>
+                    <p className="text-[11px] text-[#7A726D] mt-0.5">
                       Recomendado: JPG ou PNG quadrado. Será reduzido automaticamente (máx. 200KB).
                     </p>
                   </div>
