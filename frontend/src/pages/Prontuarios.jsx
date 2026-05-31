@@ -76,7 +76,7 @@ const ANAMNESE_QUESTIONS = [
   { key: "dermatite", label: "Dermatite?", detail: "Local:" },
   {
     key: "pomada_anestesica",
-    label: "Solicitou uso de pomada anestésica?",
+    label: "Solicitou pomada/anestésico?",
     simHint: "⚠️ Assinar o termo de uso da pomada",
   },
 ];
@@ -265,10 +265,24 @@ export default function Prontuario() {
     }
   };
   const removePatient = async (p) => {
-    if (!window.confirm(`Excluir prontuário de "${p.parent_name}"?`)) return;
-    await api.delete(`/patients/${p.id}`);
-    toast.success("Prontuário excluído");
-    load();
+    if (
+      !window.confirm(
+        `Excluir prontuário de "${p.parent_name}"?\n\n` +
+          `ATENÇÃO: isto vai apagar também TODOS os agendamentos e vendas desse paciente.\n` +
+          `O estoque dos produtos vendidos será devolvido automaticamente.\n\n` +
+          `Esta ação não pode ser desfeita.`
+      )
+    )
+      return;
+    try {
+      const { data } = await api.delete(`/patients/${p.id}`);
+      toast.success(
+        `Prontuário excluído (${data.deleted_appointments || 0} agendamento(s) e ${data.deleted_sales || 0} venda(s))`
+      );
+      load();
+    } catch {
+      toast.error("Erro ao excluir prontuário");
+    }
   };
 
   // ===== Detail view =====
@@ -775,12 +789,14 @@ export default function Prontuario() {
                       <div className="inline-flex gap-2">
                         <button
                           onClick={() => openEditPatient(p)}
+                          data-testid={`edit-patient-${p.id}`}
                           className="p-2 rounded-lg hover:bg-[#F2E4DF] text-[#7A726D] hover:text-[#C97D63]"
                         >
                           <Pencil className="w-4 h-4" strokeWidth={1.5} />
                         </button>
                         <button
                           onClick={() => removePatient(p)}
+                          data-testid={`delete-patient-${p.id}`}
                           className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
                         >
                           <Trash2 className="w-4 h-4" strokeWidth={1.5} />

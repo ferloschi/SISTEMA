@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Search,
   HeartPulse,
+  Trash2,
 } from "lucide-react";
 
 const TABS = [
@@ -130,6 +131,24 @@ export default function PosVenda() {
       load();
     } catch {
       toast.error("Erro ao atualizar");
+    }
+  };
+
+  const remove = async (r) => {
+    if (
+      !window.confirm(
+        `Excluir o registro de pós-venda de "${r.patient_name}"?\n\n` +
+          `O agendamento da perfuração também será removido da Gestão Administrativa.\n` +
+          `Esta ação não pode ser desfeita.`
+      )
+    )
+      return;
+    try {
+      await api.delete(`/appointments/${r.id}`);
+      toast.success("Registro excluído");
+      load();
+    } catch {
+      toast.error("Erro ao excluir");
     }
   };
 
@@ -261,27 +280,37 @@ export default function PosVenda() {
                           {formatDate(r.post_sale_date)}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          {r.reminder_status === "contatado" ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => markPending(r.id)}
-                              data-testid={`posventa-undo-${r.id}`}
-                              className="border-[#EBE8E3] text-[#7A726D] hover:text-[#C97D63]"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5 mr-1" strokeWidth={1.5} />
-                              Reabrir
-                            </Button>
-                          ) : (
+                          <div className="inline-flex items-center justify-end gap-2">
+                            {r.reminder_status === "contatado" ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => markPending(r.id)}
+                                data-testid={`posventa-undo-${r.id}`}
+                                className="border-[#EBE8E3] text-[#7A726D] hover:text-[#C97D63]"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 mr-1" strokeWidth={1.5} />
+                                Reabrir
+                              </Button>
+                            ) : (
+                              <button
+                                onClick={() => markCalled(r.id)}
+                                data-testid={`posventa-mark-called-${r.id}`}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#E5F1E0] text-[#5C7053] border border-[#C7DBBE] hover:bg-[#D8E8D0]"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                                Já liguei
+                              </button>
+                            )}
                             <button
-                              onClick={() => markCalled(r.id)}
-                              data-testid={`posventa-mark-called-${r.id}`}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#E5F1E0] text-[#5C7053] border border-[#C7DBBE] hover:bg-[#D8E8D0]"
+                              onClick={() => remove(r)}
+                              data-testid={`posventa-delete-${r.id}`}
+                              title="Excluir registro"
+                              className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
                             >
-                              <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                              Já liguei
+                              <Trash2 className="w-4 h-4" strokeWidth={1.5} />
                             </button>
-                          )}
+                          </div>
                         </td>
                       </tr>
                     );

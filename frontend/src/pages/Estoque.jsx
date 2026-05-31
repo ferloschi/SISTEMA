@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search, AlertTriangle, Printer } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, AlertTriangle, Printer, Upload, Image as ImageIcon, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const emptyForm = {
@@ -46,6 +46,7 @@ const emptyForm = {
   stock_qty: 0,
   min_stock: 0,
   notes: "",
+  photo: "",
 };
 
 const NONE = "__none__";
@@ -131,6 +132,56 @@ export default function Estoque() {
     await api.delete(`/products/${item.id}`);
     toast.success("Produto excluído");
     load();
+  };
+
+  /**
+   * Read a File, resize to max 400px (long edge) and compress to JPEG,
+   * trying decreasing quality until under ~180KB base64.
+   * Sets form.photo with the resulting data URL.
+   */
+  const handlePhotoChange = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione um arquivo de imagem (JPG ou PNG).");
+      return;
+    }
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const img = await new Promise((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = reject;
+        im.src = dataUrl;
+      });
+      const MAX_SIDE = 400;
+      const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      let q = 0.9;
+      let out = canvas.toDataURL("image/jpeg", q);
+      // Aim for <= 180KB base64 string (server limit is ~200KB)
+      while (out.length > 180_000 && q > 0.4) {
+        q -= 0.1;
+        out = canvas.toDataURL("image/jpeg", q);
+      }
+      if (out.length > 200_000) {
+        toast.error("Imagem muito grande mesmo após compressão. Use uma menor.");
+        return;
+      }
+      setForm((prev) => ({ ...prev, photo: out }));
+    } catch (err) {
+      toast.error("Não foi possível processar a imagem.");
+    }
   };
 
   return (
@@ -286,6 +337,55 @@ export default function Estoque() {
                 />
               </div>
               <div className="md:col-span-2">
+                <Label>Foto do produto (opcional)</Label>
+                <div className="flex items-center gap-3 mt-1">
+                  {form.photo ? (
+                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-[#EBE8E3] bg-white shrink-0">
+                      <img
+                        src={form.photo}
+                        alt="Pré-visualização"
+                        className="w-full h-full object-cover"
+                        data-testid="form-photo-preview"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, photo: "" })}
+                        data-testid="form-photo-remove"
+                        title="Remover foto"
+                        className="absolute top-0 right-0 m-0.5 p-0.5 rounded-full bg-white/90 hover:bg-white text-[#D06B6B] shadow"
+                      >
+                        <X className="w-3 h-3" strokeWidth={2} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-20 h-20 rounded-lg border border-dashed border-[#E8CFC1] bg-[#FBF6F2] flex items-center justify-center text-[#C97D63] shrink-0">
+                      <ImageIcon className="w-6 h-6" strokeWidth={1.5} />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <label
+                      htmlFor="product-photo-input"
+                      className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-[#EBE8E3] bg-white text-[#2D2825] hover:bg-[#FBF6F2] cursor-pointer"
+                      data-testid="form-photo-trigger"
+                    >
+                      <Upload className="w-4 h-4" strokeWidth={1.5} />
+                      {form.photo ? "Trocar foto" : "Enviar foto"}
+                    </label>
+                    <input
+                      id="product-photo-input"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      data-testid="form-photo-input"
+                      onChange={(e) => handlePhotoChange(e.target.files?.[0])}
+                    />
+                    <p className="text-[11px] text-[#7A726D] mt-1">
+                      Recomendado: JPG ou PNG quadrado. Será reduzido automaticamente (máx. 200KB).
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="md:col-span-2">
                 <Label>Observações</Label>
                 <Textarea
                   value={form.notes}
@@ -318,6 +418,7 @@ export default function Estoque() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#FDFDF9] border-b border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
+              <th className="py-3 px-4 text-left w-14">Foto</th>
               <th className="py-3 px-4 text-left">SKU</th>
               <th className="py-3 px-4 text-left">Nome</th>
               <th className="py-3 px-4 text-left">Categoria</th>
@@ -331,7 +432,7 @@ export default function Estoque() {
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-[#7A726D]">
+                <td colSpan={9} className="py-10 text-center text-[#7A726D]">
                   Nenhum produto cadastrado.
                 </td>
               </tr>
@@ -344,6 +445,20 @@ export default function Estoque() {
                     className="border-b border-[#EBE8E3] hover:bg-[#FDFDF9]/60"
                     data-testid={`product-row-${p.id}`}
                   >
+                    <td className="py-2 px-4">
+                      {p.photo ? (
+                        <img
+                          src={p.photo}
+                          alt={p.name}
+                          data-testid={`product-photo-${p.id}`}
+                          className="w-10 h-10 rounded-md object-cover border border-[#EBE8E3]"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-md border border-dashed border-[#EBE8E3] bg-[#FBF6F2] flex items-center justify-center text-[#C97D63]">
+                          <ImageIcon className="w-4 h-4" strokeWidth={1.5} />
+                        </div>
+                      )}
+                    </td>
                     <td className="py-3 px-4 font-mono text-xs text-[#7A726D]">{p.sku}</td>
                     <td className="py-3 px-4 font-medium">{p.name}</td>
                     <td className="py-3 px-4">

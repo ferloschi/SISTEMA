@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, X, Calculator } from "lucide-react";
+import { Plus, Pencil, Trash2, Copy, X, Calculator } from "lucide-react";
 
 const emptyItem = { product_id: "", name: "", qty: 1, unit_cost: 0 };
 
@@ -88,6 +88,23 @@ export default function Precificacao() {
       margin_pct: proc.margin_pct,
       manual_price: proc.manual_price || 0,
       active: proc.active,
+    });
+    setOpen(true);
+  };
+
+  const duplicate = (proc) => {
+    // Open the form as a NEW procedure pre-filled with this one's data
+    setEditing(null);
+    setForm({
+      name: `${proc.name} (cópia)`,
+      items:
+        proc.items && proc.items.length > 0
+          ? proc.items.map((i) => ({ ...i }))
+          : [{ ...emptyItem }],
+      indirect_cost_pct: proc.indirect_cost_pct,
+      margin_pct: proc.margin_pct,
+      manual_price: proc.manual_price || 0,
+      active: true,
     });
     setOpen(true);
   };
@@ -443,13 +460,23 @@ export default function Precificacao() {
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <button
+                        onClick={() => duplicate(p)}
+                        data-testid={`duplicate-proc-${p.id}`}
+                        title="Duplicar kit"
+                        className="p-2 rounded-lg hover:bg-[#E5F1E0] text-[#7A726D] hover:text-[#5C7053]"
+                      >
+                        <Copy className="w-4 h-4" strokeWidth={1.5} />
+                      </button>
+                      <button
                         onClick={() => openEdit(p)}
+                        data-testid={`edit-proc-${p.id}`}
                         className="p-2 rounded-lg hover:bg-[#F2E4DF] text-[#7A726D] hover:text-[#C97D63]"
                       >
                         <Pencil className="w-4 h-4" strokeWidth={1.5} />
                       </button>
                       <button
                         onClick={() => remove(p)}
+                        data-testid={`delete-proc-${p.id}`}
                         className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
                       >
                         <Trash2 className="w-4 h-4" strokeWidth={1.5} />

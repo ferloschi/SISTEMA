@@ -49,6 +49,7 @@ class Product(BaseModel):
     stock_qty: int = 0
     min_stock: int = 0
     notes: Optional[str] = ""
+    photo: Optional[str] = ""  # base64 data URL (≤200KB)
     created_at: str = Field(default_factory=now_utc_iso)
 
 
@@ -68,6 +69,7 @@ class ProductCreate(BaseModel):
     stock_qty: int = 0
     min_stock: int = 0
     notes: Optional[str] = ""
+    photo: Optional[str] = ""
 
 
 class Patient(BaseModel):
@@ -281,9 +283,28 @@ async def list_products(q: Optional[str] = None):
     return items
 
 
+MAX_PHOTO_BYTES = 280_000  # ~200KB base64 with overhead
+
+
+def _validate_photo(photo: Optional[str]):
+    if not photo:
+        return
+    # data URL: "data:image/png;base64,...."
+    if len(photo) > MAX_PHOTO_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail="Foto excede 200KB. Reduza a imagem e tente novamente.",
+        )
+    if not photo.startswith("data:image/"):
+        raise HTTPException(
+            status_code=400, detail="Formato de imagem inválido."
+        )
+
+
 @api_router.post("/products", response_model=Product)
 async def create_product(payload: ProductCreate):
     data = payload.model_dump()
+    _validate_photo(data.get("photo"))
     if not data.get("sku"):
         data["sku"] = await next_sku()
     prod = Product(**data)
@@ -297,6 +318,7 @@ async def update_product(product_id: str, payload: ProductCreate):
     if not existing:
         raise HTTPException(404, "Produto não encontrado")
     data = payload.model_dump()
+    _validate_photo(data.get("photo"))
     if not data.get("sku"):
         data["sku"] = existing["sku"]
     existing.update(data)
@@ -348,10 +370,29 @@ async def update_patient(patient_id: str, payload: PatientCreate):
 
 @api_router.delete("/patients/{patient_id}")
 async def delete_patient(patient_id: str):
-    res = await db.patients.delete_one({"id": patient_id})
-    if res.deleted_count == 0:
+    existing = await db.patients.find_one({"id": patient_id}, {"_id": 0})
+    if not existing:
         raise HTTPException(404, "Paciente não encontrado")
-    return {"ok": True}
+
+    # Cascade: find all sales of this patient and restore product stock first
+    sales_cursor = db.sales.find({"patient_id": patient_id}, {"_id": 0})
+    async for sale in sales_cursor:
+        for it in sale.get("items", []):
+            if it.get("product_id"):
+                await db.products.update_one(
+                    {"id": it["product_id"]},
+                    {"$inc": {"stock_qty": int(it.get("qty", 0))}},
+                )
+
+    sales_res = await db.sales.delete_many({"patient_id": patient_id})
+    appts_res = await db.appointments.delete_many({"patient_id": patient_id})
+    await db.patients.delete_one({"id": patient_id})
+
+    return {
+        "ok": True,
+        "deleted_sales": sales_res.deleted_count,
+        "deleted_appointments": appts_res.deleted_count,
+    }
 
 
 # =====================
