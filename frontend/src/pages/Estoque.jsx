@@ -31,22 +31,27 @@ import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Search, AlertTriangle, Printer, Upload, Image as ImageIcon, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-const emptyForm = {
-  sku: "",
-  name: "",
-  category: "Brinco",
-  insumo: "",
+const emptyVariant = () => ({
+  id: undefined, // assigned by server
   material: "",
-  modelo: "",
-  size: "",
   color: "",
+  size: "",
   fornecedor: "",
   purchase_value: 0,
   sale_value: 0,
   stock_qty: 0,
   min_stock: 0,
+});
+
+const emptyForm = {
+  sku: "",
+  name: "",
+  category: "Brinco",
+  insumo: "",
+  modelo: "",
   notes: "",
   photo: "",
+  variants: [emptyVariant()],
 };
 
 const NONE = "__none__";
@@ -85,8 +90,8 @@ export default function Estoque() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
-    // eslint-disable-next-line
   }, [search]);
 
   const openNew = () => {
@@ -97,21 +102,63 @@ export default function Estoque() {
 
   const openEdit = (item) => {
     setEditing(item);
-    setForm({ ...emptyForm, ...item });
+    setForm({
+      ...emptyForm,
+      ...item,
+      // ensure variants array — backend already provides it, but keep guard
+      variants:
+        Array.isArray(item.variants) && item.variants.length > 0
+          ? item.variants.map((v) => ({
+              ...emptyVariant(),
+              ...v,
+              purchase_value: Number(v.purchase_value) || 0,
+              sale_value: Number(v.sale_value) || 0,
+              stock_qty: Number(v.stock_qty) || 0,
+              min_stock: Number(v.min_stock) || 0,
+            }))
+          : [emptyVariant()],
+    });
     setOpen(true);
   };
+
+  const updateVariant = (idx, patch) => {
+    setForm((f) => {
+      const variants = [...(f.variants || [])];
+      variants[idx] = { ...variants[idx], ...patch };
+      return { ...f, variants };
+    });
+  };
+
+  const addVariant = () =>
+    setForm((f) => ({ ...f, variants: [...(f.variants || []), emptyVariant()] }));
+
+  const removeVariant = (idx) =>
+    setForm((f) => {
+      const variants = (f.variants || []).filter((_, i) => i !== idx);
+      return { ...f, variants: variants.length > 0 ? variants : [emptyVariant()] };
+    });
 
   const submit = async () => {
     if (!form.name) {
       toast.error("Informe o nome do produto.");
       return;
     }
+    const variants = (form.variants || []).map((v) => ({
+      ...v,
+      purchase_value: Number(v.purchase_value) || 0,
+      sale_value: Number(v.sale_value) || 0,
+      stock_qty: parseInt(v.stock_qty) || 0,
+      min_stock: parseInt(v.min_stock) || 0,
+    }));
     const payload = {
-      ...form,
-      purchase_value: Number(form.purchase_value) || 0,
-      sale_value: Number(form.sale_value) || 0,
-      stock_qty: parseInt(form.stock_qty) || 0,
-      min_stock: parseInt(form.min_stock) || 0,
+      sku: form.sku,
+      name: form.name,
+      category: form.category,
+      insumo: form.insumo,
+      modelo: form.modelo,
+      notes: form.notes,
+      photo: form.photo,
+      variants,
     };
     try {
       if (editing) {
@@ -123,8 +170,9 @@ export default function Estoque() {
       }
       setOpen(false);
       load();
-    } catch {
-      toast.error("Erro ao salvar produto");
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Erro ao salvar produto");
     }
   };
 
@@ -252,16 +300,6 @@ export default function Estoque() {
                 </Select>
               </div>
               <div>
-                <Label>Material</Label>
-                <SelectOrNone
-                  value={form.material}
-                  onValueChange={(v) => setForm({ ...form, material: v })}
-                  options={MATERIAL_OPTIONS}
-                  placeholder="Selecione (opcional)"
-                  testid="form-material"
-                />
-              </div>
-              <div>
                 <Label>Modelo</Label>
                 <SelectOrNone
                   value={form.modelo}
@@ -271,71 +309,138 @@ export default function Estoque() {
                   testid="form-modelo"
                 />
               </div>
-              <div>
-                <Label>Tamanho</Label>
-                <SelectOrNone
-                  value={form.size}
-                  onValueChange={(v) => setForm({ ...form, size: v })}
-                  options={SIZE_OPTIONS}
-                  placeholder="Selecione (opcional)"
-                  testid="form-size"
-                />
-              </div>
-              <div>
-                <Label>Cor</Label>
-                <SelectOrNone
-                  value={form.color}
-                  onValueChange={(v) => setForm({ ...form, color: v })}
-                  options={COR_OPTIONS}
-                  placeholder="Selecione (opcional)"
-                  testid="form-color"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <Label>Fornecedor</Label>
-                <Input
-                  data-testid="form-fornecedor"
-                  value={form.fornecedor}
-                  onChange={(e) => setForm({ ...form, fornecedor: e.target.value })}
-                  placeholder="Nome do fornecedor"
-                />
-              </div>
-              <div>
-                <Label>Valor de Compra (R$)</Label>
-                <Input
-                  data-testid="form-purchase"
-                  type="number"
-                  step="0.01"
-                  value={form.purchase_value}
-                  onChange={(e) => setForm({ ...form, purchase_value: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Valor de Venda (R$)</Label>
-                <Input
-                  data-testid="form-sale"
-                  type="number"
-                  step="0.01"
-                  value={form.sale_value}
-                  onChange={(e) => setForm({ ...form, sale_value: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Quantidade em estoque</Label>
-                <Input
-                  data-testid="form-stock"
-                  type="number"
-                  value={form.stock_qty}
-                  onChange={(e) => setForm({ ...form, stock_qty: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Estoque mínimo</Label>
-                <Input
-                  type="number"
-                  value={form.min_stock}
-                  onChange={(e) => setForm({ ...form, min_stock: e.target.value })}
-                />
+
+              {/* Variantes — 1 ou mais */}
+              <div className="md:col-span-2 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[#C97D63]">
+                    Variantes (cor, material, estoque, preço)
+                  </Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={addVariant}
+                    data-testid="add-variant-btn"
+                    className="border-[#EBE8E3]"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" strokeWidth={1.5} />
+                    Adicionar variante
+                  </Button>
+                </div>
+                {(form.variants || []).map((v, idx) => (
+                  <div
+                    key={idx}
+                    data-testid={`variant-row-${idx}`}
+                    className="rounded-xl border border-[#EBE8E3] bg-[#FBF6F2]/40 p-3 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs uppercase tracking-wider text-[#7A726D]">
+                        Variante {idx + 1}
+                      </p>
+                      {(form.variants || []).length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeVariant(idx)}
+                          data-testid={`remove-variant-${idx}`}
+                          className="p-1 rounded-md text-[#7A726D] hover:text-[#D06B6B] hover:bg-[#FBE7E7]"
+                          title="Remover variante"
+                        >
+                          <Trash2 className="w-4 h-4" strokeWidth={1.5} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">Material</Label>
+                        <SelectOrNone
+                          value={v.material}
+                          onValueChange={(val) => updateVariant(idx, { material: val })}
+                          options={MATERIAL_OPTIONS}
+                          placeholder="Selecione (opcional)"
+                          testid={`variant-${idx}-material`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Cor</Label>
+                        <SelectOrNone
+                          value={v.color}
+                          onValueChange={(val) => updateVariant(idx, { color: val })}
+                          options={COR_OPTIONS}
+                          placeholder="Selecione (opcional)"
+                          testid={`variant-${idx}-color`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Tamanho</Label>
+                        <SelectOrNone
+                          value={v.size}
+                          onValueChange={(val) => updateVariant(idx, { size: val })}
+                          options={SIZE_OPTIONS}
+                          placeholder="Selecione (opcional)"
+                          testid={`variant-${idx}-size`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Fornecedor</Label>
+                        <Input
+                          value={v.fornecedor}
+                          onChange={(e) =>
+                            updateVariant(idx, { fornecedor: e.target.value })
+                          }
+                          placeholder="Nome do fornecedor"
+                          data-testid={`variant-${idx}-fornecedor`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Valor de Compra (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={v.purchase_value}
+                          onChange={(e) =>
+                            updateVariant(idx, { purchase_value: e.target.value })
+                          }
+                          data-testid={`variant-${idx}-purchase`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Valor de Venda (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={v.sale_value}
+                          onChange={(e) =>
+                            updateVariant(idx, { sale_value: e.target.value })
+                          }
+                          data-testid={`variant-${idx}-sale`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Quantidade em estoque</Label>
+                        <Input
+                          type="number"
+                          value={v.stock_qty}
+                          onChange={(e) =>
+                            updateVariant(idx, { stock_qty: e.target.value })
+                          }
+                          data-testid={`variant-${idx}-stock`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Estoque mínimo</Label>
+                        <Input
+                          type="number"
+                          value={v.min_stock}
+                          onChange={(e) =>
+                            updateVariant(idx, { min_stock: e.target.value })
+                          }
+                          data-testid={`variant-${idx}-min`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
               <div className="md:col-span-2">
                 <Label>Foto do produto (opcional)</Label>
@@ -477,12 +582,35 @@ export default function Estoque() {
                   <div className="flex-1 min-w-0">
                     <p className="font-mono text-[10px] text-[#7A726D]">{p.sku}</p>
                     <p className="font-medium text-[#2D2825] break-words">{p.name}</p>
-                    <span className="inline-block mt-1 bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1] px-2 py-0.5 rounded-full text-[11px] font-medium">
-                      {p.category}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                      <span className="inline-block bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1] px-2 py-0.5 rounded-full text-[11px] font-medium">
+                        {p.category}
+                      </span>
+                      {(p.variants?.length || 0) > 1 && (
+                        <span className="inline-block bg-[#E8DDD0] text-[#7A6651] border border-[#D6C5B0] px-2 py-0.5 rounded-full text-[11px] font-medium">
+                          {p.variants.length} variantes
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                {(p.material || p.modelo || p.size || p.color || p.fornecedor) && (
+                {(p.variants?.length || 0) > 1 ? (
+                  <div className="mt-3 space-y-1">
+                    {p.variants.map((v) => (
+                      <div
+                        key={v.id}
+                        className="flex items-center justify-between text-xs text-[#2D2825] bg-white border border-[#EBE8E3] rounded-md px-2 py-1.5"
+                      >
+                        <span className="truncate">
+                          {[v.color, v.material, v.size].filter(Boolean).join(" · ") || "—"}
+                        </span>
+                        <span className="text-[#C97D63] font-medium ml-2 shrink-0">
+                          {formatBRL(v.sale_value)} · est. {v.stock_qty}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (p.material || p.modelo || p.size || p.color || p.fornecedor) ? (
                   <p className="text-xs text-[#7A726D] mt-3 break-words">
                     {[
                       p.material,
@@ -494,7 +622,7 @@ export default function Estoque() {
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
-                )}
+                ) : null}
                 <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-[#7A726D]">Compra</p>
@@ -602,13 +730,33 @@ export default function Estoque() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-xs text-[#7A726D]">
-                      {[
-                        p.material,
-                        p.modelo,
-                        p.size,
-                        p.color,
-                        p.fornecedor && `Fornecedor: ${p.fornecedor}`,
-                      ].filter(Boolean).join(" · ") || "—"}
+                      {(p.variants?.length || 0) > 1 ? (
+                        <div className="space-y-0.5">
+                          <p className="font-medium text-[#7A6651]">
+                            {p.variants.length} variantes
+                          </p>
+                          {p.variants.slice(0, 3).map((v) => (
+                            <p key={v.id}>
+                              · {[v.color, v.material, v.size].filter(Boolean).join(" / ") ||
+                                "sem detalhes"}
+                              <span className="text-[#C97D63]"> ({v.stock_qty} em est.)</span>
+                            </p>
+                          ))}
+                          {p.variants.length > 3 && (
+                            <p className="italic">+ {p.variants.length - 3} variante(s)…</p>
+                          )}
+                        </div>
+                      ) : (
+                        [
+                          p.material,
+                          p.modelo,
+                          p.size,
+                          p.color,
+                          p.fornecedor && `Fornecedor: ${p.fornecedor}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "—"
+                      )}
                     </td>
                     <td className="py-3 px-4 text-right">{formatBRL(p.purchase_value)}</td>
                     <td className="py-3 px-4 text-right font-medium">

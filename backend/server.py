@@ -31,6 +31,20 @@ def now_utc_iso() -> str:
 # =====================
 # Models
 # =====================
+class ProductVariant(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    material: Optional[str] = ""
+    color: Optional[str] = ""
+    size: Optional[str] = ""
+    fornecedor: Optional[str] = ""
+    purchase_value: float = 0.0
+    sale_value: float = 0.0
+    stock_qty: int = 0
+    min_stock: int = 0
+    photo: Optional[str] = ""  # variant-level base64 photo (optional)
+
+
 class Product(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -38,19 +52,36 @@ class Product(BaseModel):
     name: str
     category: str = "Outros"
     insumo: Optional[str] = ""
-    material: Optional[str] = ""
     modelo: Optional[str] = ""
-    size: Optional[str] = ""
+    notes: Optional[str] = ""
+    photo: Optional[str] = ""  # parent-level base64 (fallback)
+    variants: List[ProductVariant] = Field(default_factory=list)
+    # Legacy fields kept for backward compatibility with existing UIs.
+    # When a product has variants, prefer reading from `variants[0]` or the
+    # specific variant in question.
+    material: Optional[str] = ""
     color: Optional[str] = ""
+    size: Optional[str] = ""
     fornecedor: Optional[str] = ""
     purchase_value: float = 0.0
     sale_value: float = 0.0
-    indirect_cost_pct: float = 20.0  # legacy, kept for compatibility
+    indirect_cost_pct: float = 20.0
     stock_qty: int = 0
     min_stock: int = 0
-    notes: Optional[str] = ""
-    photo: Optional[str] = ""  # base64 data URL (≤200KB)
     created_at: str = Field(default_factory=now_utc_iso)
+
+
+class ProductVariantInput(BaseModel):
+    id: Optional[str] = None
+    material: Optional[str] = ""
+    color: Optional[str] = ""
+    size: Optional[str] = ""
+    fornecedor: Optional[str] = ""
+    purchase_value: float = 0.0
+    sale_value: float = 0.0
+    stock_qty: int = 0
+    min_stock: int = 0
+    photo: Optional[str] = ""
 
 
 class ProductCreate(BaseModel):
@@ -58,18 +89,21 @@ class ProductCreate(BaseModel):
     name: str
     category: Optional[str] = "Outros"
     insumo: Optional[str] = ""
-    material: Optional[str] = ""
     modelo: Optional[str] = ""
-    size: Optional[str] = ""
+    notes: Optional[str] = ""
+    photo: Optional[str] = ""
+    variants: List[ProductVariantInput] = Field(default_factory=list)
+    # Legacy single-variant fields still accepted; converted to variants[0]
+    # if `variants` is empty.
+    material: Optional[str] = ""
     color: Optional[str] = ""
+    size: Optional[str] = ""
     fornecedor: Optional[str] = ""
     purchase_value: float = 0.0
     sale_value: float = 0.0
     indirect_cost_pct: float = 20.0
     stock_qty: int = 0
     min_stock: int = 0
-    notes: Optional[str] = ""
-    photo: Optional[str] = ""
 
 
 class Patient(BaseModel):
@@ -141,6 +175,7 @@ class AppointmentCreate(BaseModel):
 
 class SaleItem(BaseModel):
     product_id: Optional[str] = ""
+    variant_id: Optional[str] = ""
     name: str
     qty: int = 1
     unit_price: float = 0.0
@@ -270,19 +305,6 @@ async def ensure_default_payment_methods():
 # =====================
 # Products / Estoque
 # =====================
-@api_router.get("/products", response_model=List[Product])
-async def list_products(q: Optional[str] = None):
-    query = {}
-    if q:
-        query = {"$or": [
-            {"name": {"$regex": q, "$options": "i"}},
-            {"sku": {"$regex": q, "$options": "i"}},
-            {"category": {"$regex": q, "$options": "i"}},
-        ]}
-    items = await db.products.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
-    return items
-
-
 MAX_PHOTO_BYTES = 280_000  # ~200KB base64 with overhead
 
 
@@ -301,12 +323,142 @@ def _validate_photo(photo: Optional[str]):
         )
 
 
+def _ensure_variants(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Make sure product doc has at least one variant.
+
+    Legacy products were stored with flat color/material/stock fields.
+    We synthesize a single variant from those legacy fields, leaving the
+    legacy fields intact for any consumer that still reads them.
+    """
+    if doc.get("variants"):
+        return doc
+    legacy_variant = {
+        "id": str(uuid.uuid4()),
+        "material": doc.get("material") or "",
+        "color": doc.get("color") or "",
+        "size": doc.get("size") or "",
+        "fornecedor": doc.get("fornecedor") or "",
+        "purchase_value": float(doc.get("purchase_value") or 0),
+        "sale_value": float(doc.get("sale_value") or 0),
+        "stock_qty": int(doc.get("stock_qty") or 0),
+        "min_stock": int(doc.get("min_stock") or 0),
+        "photo": "",
+    }
+    doc["variants"] = [legacy_variant]
+    return doc
+
+
+def _sync_legacy_fields(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Mirror the FIRST variant onto the parent's legacy fields and aggregate
+    totals (stock_qty = sum of variants) for backward-compat consumers."""
+    variants = doc.get("variants") or []
+    if not variants:
+        return doc
+    first = variants[0]
+    doc["material"] = first.get("material") or ""
+    doc["color"] = first.get("color") or ""
+    doc["size"] = first.get("size") or ""
+    doc["fornecedor"] = first.get("fornecedor") or ""
+    doc["purchase_value"] = float(first.get("purchase_value") or 0)
+    doc["sale_value"] = float(first.get("sale_value") or 0)
+    doc["min_stock"] = int(first.get("min_stock") or 0)
+    doc["stock_qty"] = sum(int(v.get("stock_qty") or 0) for v in variants)
+    return doc
+
+
+def _process_variants(variants: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Validate photos, ensure ids, and coerce numbers on each variant."""
+    out = []
+    for v in variants or []:
+        _validate_photo(v.get("photo"))
+        out.append({
+            "id": v.get("id") or str(uuid.uuid4()),
+            "material": v.get("material") or "",
+            "color": v.get("color") or "",
+            "size": v.get("size") or "",
+            "fornecedor": v.get("fornecedor") or "",
+            "purchase_value": float(v.get("purchase_value") or 0),
+            "sale_value": float(v.get("sale_value") or 0),
+            "stock_qty": int(v.get("stock_qty") or 0),
+            "min_stock": int(v.get("min_stock") or 0),
+            "photo": v.get("photo") or "",
+        })
+    return out
+
+
+async def _decrement_variant_stock(product_id: str, variant_id: Optional[str], qty: int):
+    """Decrement stock on the variant identified by `variant_id`, or on the
+    first variant if not provided. Legacy aggregated `stock_qty` is recomputed.
+    """
+    doc = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not doc:
+        return
+    doc = _ensure_variants(doc)
+    target_id = variant_id or (doc["variants"][0]["id"] if doc["variants"] else None)
+    for v in doc["variants"]:
+        if v["id"] == target_id:
+            v["stock_qty"] = max(0, int(v.get("stock_qty") or 0) - int(qty))
+            break
+    _sync_legacy_fields(doc)
+    await db.products.update_one(
+        {"id": product_id},
+        {"$set": {"variants": doc["variants"], "stock_qty": doc["stock_qty"]}},
+    )
+
+
+async def _increment_variant_stock(product_id: str, variant_id: Optional[str], qty: int):
+    doc = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not doc:
+        return
+    doc = _ensure_variants(doc)
+    target_id = variant_id or (doc["variants"][0]["id"] if doc["variants"] else None)
+    for v in doc["variants"]:
+        if v["id"] == target_id:
+            v["stock_qty"] = int(v.get("stock_qty") or 0) + int(qty)
+            break
+    _sync_legacy_fields(doc)
+    await db.products.update_one(
+        {"id": product_id},
+        {"$set": {"variants": doc["variants"], "stock_qty": doc["stock_qty"]}},
+    )
+
+
+@api_router.get("/products", response_model=List[Product])
+async def list_products(q: Optional[str] = None):
+    query: Dict[str, Any] = {}
+    if q:
+        query = {"$or": [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"sku": {"$regex": q, "$options": "i"}},
+            {"category": {"$regex": q, "$options": "i"}},
+        ]}
+    raw = await db.products.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    items = [_sync_legacy_fields(_ensure_variants(p)) for p in raw]
+    return items
+
+
 @api_router.post("/products", response_model=Product)
 async def create_product(payload: ProductCreate):
     data = payload.model_dump()
     _validate_photo(data.get("photo"))
     if not data.get("sku"):
         data["sku"] = await next_sku()
+    # Convert legacy single-variant input to variants[] if needed
+    variants_in = data.get("variants") or []
+    if not variants_in:
+        variants_in = [{
+            "material": data.get("material") or "",
+            "color": data.get("color") or "",
+            "size": data.get("size") or "",
+            "fornecedor": data.get("fornecedor") or "",
+            "purchase_value": data.get("purchase_value") or 0,
+            "sale_value": data.get("sale_value") or 0,
+            "stock_qty": data.get("stock_qty") or 0,
+            "min_stock": data.get("min_stock") or 0,
+            "photo": "",
+        }]
+    data["variants"] = _process_variants(variants_in)
+    _sync_legacy_fields(data)
     prod = Product(**data)
     await db.products.insert_one(prod.model_dump())
     return prod
@@ -321,6 +473,22 @@ async def update_product(product_id: str, payload: ProductCreate):
     _validate_photo(data.get("photo"))
     if not data.get("sku"):
         data["sku"] = existing["sku"]
+    variants_in = data.get("variants") or []
+    if not variants_in:
+        # Fallback: build from legacy fields
+        variants_in = [{
+            "material": data.get("material") or "",
+            "color": data.get("color") or "",
+            "size": data.get("size") or "",
+            "fornecedor": data.get("fornecedor") or "",
+            "purchase_value": data.get("purchase_value") or 0,
+            "sale_value": data.get("sale_value") or 0,
+            "stock_qty": data.get("stock_qty") or 0,
+            "min_stock": data.get("min_stock") or 0,
+            "photo": "",
+        }]
+    data["variants"] = _process_variants(variants_in)
+    _sync_legacy_fields(data)
     existing.update(data)
     await db.products.update_one({"id": product_id}, {"$set": data})
     return Product(**existing)
@@ -379,9 +547,10 @@ async def delete_patient(patient_id: str):
     async for sale in sales_cursor:
         for it in sale.get("items", []):
             if it.get("product_id"):
-                await db.products.update_one(
-                    {"id": it["product_id"]},
-                    {"$inc": {"stock_qty": int(it.get("qty", 0))}},
+                await _increment_variant_stock(
+                    it["product_id"],
+                    it.get("variant_id"),
+                    int(it.get("qty", 0)),
                 )
 
     sales_res = await db.sales.delete_many({"patient_id": patient_id})
@@ -750,12 +919,11 @@ async def list_sales(month: Optional[str] = None, patient_id: Optional[str] = No
 async def create_sale(payload: SaleCreate):
     sale = await compute_sale(payload)
     await db.sales.insert_one(sale.model_dump())
-    # decrement stock
+    # decrement stock on the specific variant when product_id is set
     for it in sale.items:
         if it.product_id:
-            await db.products.update_one(
-                {"id": it.product_id},
-                {"$inc": {"stock_qty": -int(it.qty)}}
+            await _decrement_variant_stock(
+                it.product_id, getattr(it, "variant_id", None), int(it.qty)
             )
     return sale
 
@@ -767,9 +935,8 @@ async def delete_sale(sale_id: str):
         raise HTTPException(404, "Venda não encontrada")
     for it in existing.get("items", []):
         if it.get("product_id"):
-            await db.products.update_one(
-                {"id": it["product_id"]},
-                {"$inc": {"stock_qty": int(it.get("qty", 0))}}
+            await _increment_variant_stock(
+                it["product_id"], it.get("variant_id"), int(it.get("qty", 0))
             )
     await db.sales.delete_one({"id": sale_id})
     return {"ok": True}
