@@ -26,10 +26,8 @@ export default function Etiquetas() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When arriving from Estoque with ?p=<id>&auto=1, auto-select 1 copy
-  // of that product and immediately open the print dialog.
   useEffect(() => {
     const pid = searchParams.get("p");
     const auto = searchParams.get("auto");
@@ -40,9 +38,16 @@ export default function Etiquetas() {
       setSearchParams({}, { replace: true });
       return;
     }
-    setSelected((prev) => ({ ...prev, [pid]: Math.max(prev[pid] || 0, 1) }));
+    setSelected((prev) => {
+      const next = { ...prev };
+      const vs = target.variants && target.variants.length > 0 ? target.variants : [{ id: "default" }];
+      vs.forEach((v) => {
+        const key = `${pid}::${v.id || "default"}`;
+        next[key] = Math.max(prev[key] || 0, 1);
+      });
+      return next;
+    });
     if (auto === "1") {
-      // Give React time to render the print-area before window.print
       const t = setTimeout(() => {
         window.print();
         setSearchParams({}, { replace: true });
@@ -51,20 +56,41 @@ export default function Etiquetas() {
     } else {
       setSearchParams({}, { replace: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flatten products into (product, variant) rows for selection/printing
+  const rows = useMemo(() => {
+    const out = [];
+    products.forEach((p) => {
+      const vs = p.variants && p.variants.length > 0 ? p.variants : [{
+        id: "default",
+        material: p.material || "",
+        color: p.color || "",
+        size: p.size || "",
+        sale_value: p.sale_value || 0,
+      }];
+      vs.forEach((v) => {
+        out.push({
+          rowKey: `${p.id}::${v.id || "default"}`,
+          product: p,
+          variant: v,
+        });
+      });
+    });
+    return out;
   }, [products]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
-      (p) =>
-        (p.name || "").toLowerCase().includes(q) ||
-        (p.sku || "").toLowerCase().includes(q) ||
-        (p.material || "").toLowerCase().includes(q) ||
-        (p.modelo || "").toLowerCase().includes(q)
+    if (!q) return rows;
+    return rows.filter(({ product: p, variant: v }) =>
+      (p.name || "").toLowerCase().includes(q) ||
+      (p.sku || "").toLowerCase().includes(q) ||
+      (v.material || "").toLowerCase().includes(q) ||
+      (v.color || "").toLowerCase().includes(q) ||
+      (p.modelo || "").toLowerCase().includes(q)
     );
-  }, [products, search]);
+  }, [rows, search]);
 
   const setQty = (id, qty) => {
     setSelected((prev) => {
@@ -82,19 +108,19 @@ export default function Etiquetas() {
   // Build a flat array of labels (one entry per copy) for printing
   const labelsToPrint = useMemo(() => {
     const arr = [];
-    products.forEach((p) => {
-      const q = selected[p.id] || 0;
-      for (let i = 0; i < q; i++) arr.push(p);
+    rows.forEach(({ rowKey, product, variant }) => {
+      const q = selected[rowKey] || 0;
+      for (let i = 0; i < q; i++) arr.push({ product, variant });
     });
     return arr;
-  }, [products, selected]);
+  }, [rows, selected]);
 
   const totalCount = labelsToPrint.length;
 
   const selectAllVisible = () => {
     const next = { ...selected };
-    filtered.forEach((p) => {
-      if (!next[p.id]) next[p.id] = 1;
+    filtered.forEach(({ rowKey }) => {
+      if (!next[rowKey]) next[rowKey] = 1;
     });
     setSelected(next);
   };
@@ -203,30 +229,34 @@ export default function Etiquetas() {
                     Nenhum produto cadastrado. Cadastre em Estoque primeiro.
                   </div>
                 )}
-                {filtered.map((p) => {
-                  const qty = selected[p.id] || 0;
+                {filtered.map(({ rowKey, product: p, variant: v }) => {
+                  const qty = selected[rowKey] || 0;
                   return (
                     <div
-                      key={p.id}
-                      data-testid={`etiquetas-row-${p.id}`}
+                      key={rowKey}
+                      data-testid={`etiquetas-row-${rowKey}`}
                       className="grid grid-cols-12 gap-2 px-4 py-3 items-center hover:bg-[#FDFDF9]"
                     >
                       <div className="col-span-4">
                         <div className="text-sm font-medium text-[#2D2825]">{p.name}</div>
-                        <div className="text-xs text-[#7A726D]">{p.category}</div>
+                        <div className="text-xs text-[#7A726D]">
+                          {p.category}
+                          {[v.color, v.material].filter(Boolean).length > 0 &&
+                            ` · ${[v.color, v.material].filter(Boolean).join(" / ")}`}
+                        </div>
                       </div>
                       <div className="col-span-2 text-sm text-[#2D2825]">{p.sku || "—"}</div>
-                      <div className="col-span-2 text-sm text-[#2D2825]">{p.material || "—"}</div>
-                      <div className="col-span-2 text-sm text-[#2D2825]">{p.size || "—"}</div>
+                      <div className="col-span-2 text-sm text-[#2D2825]">{v.material || "—"}</div>
+                      <div className="col-span-2 text-sm text-[#2D2825]">{v.size || "—"}</div>
                       <div className="col-span-1 text-sm text-[#2D2825] text-right">
-                        {formatBRL(p.sale_value)}
+                        {formatBRL(v.sale_value)}
                       </div>
                       <div className="col-span-1 flex items-center justify-end gap-1">
                         <Button
                           size="icon"
                           variant="outline"
-                          onClick={() => dec(p.id)}
-                          data-testid={`etiquetas-dec-${p.id}`}
+                          onClick={() => dec(rowKey)}
+                          data-testid={`etiquetas-dec-${rowKey}`}
                           className="h-7 w-7 border-[#EBE8E3]"
                         >
                           <Minus className="w-3 h-3" />
@@ -235,15 +265,15 @@ export default function Etiquetas() {
                           type="number"
                           min="0"
                           value={qty}
-                          onChange={(e) => setQty(p.id, e.target.value)}
-                          data-testid={`etiquetas-qty-${p.id}`}
+                          onChange={(e) => setQty(rowKey, e.target.value)}
+                          data-testid={`etiquetas-qty-${rowKey}`}
                           className="h-7 w-12 text-center px-1 border-[#EBE8E3]"
                         />
                         <Button
                           size="icon"
                           variant="outline"
-                          onClick={() => inc(p.id)}
-                          data-testid={`etiquetas-inc-${p.id}`}
+                          onClick={() => inc(rowKey)}
+                          data-testid={`etiquetas-inc-${rowKey}`}
                           className="h-7 w-7 border-[#EBE8E3]"
                         >
                           <Plus className="w-3 h-3" />
@@ -270,8 +300,8 @@ export default function Etiquetas() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-3">
-                {labelsToPrint.slice(0, 12).map((p, idx) => (
-                  <LabelPreview key={idx} product={p} />
+                {labelsToPrint.slice(0, 12).map((entry, idx) => (
+                  <LabelPreview key={idx} product={entry.product} variant={entry.variant} />
                 ))}
                 {labelsToPrint.length > 12 && (
                   <p className="text-xs text-[#7A726D]">
@@ -330,7 +360,7 @@ export default function Etiquetas() {
                   <div className="mt-3 p-3 bg-[#FBF6F2] rounded-lg border border-[#EBE8E3]">
                     <p className="text-xs text-[#7A726D] mb-1">Exemplo</p>
                     <p className="text-sm text-[#2D2825]">
-                      <span className="text-[#7A726D]">"1.2mm espessura x 8mm haste"</span>{" "}
+                      <span className="text-[#7A726D]">&ldquo;1.2mm espessura x 8mm haste&rdquo;</span>{" "}
                       →{" "}
                       <span className="font-mono font-semibold text-[#C97D63]">1.2E x 8H</span>
                     </p>
@@ -344,8 +374,8 @@ export default function Etiquetas() {
 
       {/* Hidden print area — rendered with exact mm units */}
       <div id="print-area" aria-hidden={totalCount === 0}>
-        {labelsToPrint.map((p, idx) => (
-          <PrintLabel key={idx} product={p} />
+        {labelsToPrint.map((entry, idx) => (
+          <PrintLabel key={idx} product={entry.product} variant={entry.variant} />
         ))}
       </div>
     </div>
@@ -451,14 +481,16 @@ function abbreviateSize(s = "") {
   return out;
 }
 
-function LabelHalf({ product }) {
-  const material = abbreviateMaterial(product.material || "");
-  const size = abbreviateSize(product.size || "");
+function LabelHalf({ product, variant }) {
+  // Variant overrides product-level fields. SKU stays at the product level.
+  const v = variant || product || {};
+  const material = abbreviateMaterial(v.material || product.material || "");
+  const size = abbreviateSize(v.size || product.size || "");
   const sku = product.sku || "";
-  const price = formatBRL(product.sale_value);
+  const price = formatBRL(v.sale_value ?? product.sale_value);
   return (
     <div style={halfStyle}>
-      <div style={{ ...lineStyle, fontWeight: 700 }} title={product.material}>
+      <div style={{ ...lineStyle, fontWeight: 700 }} title={v.material || product.material}>
         {material || "—"} {size && <span style={{ fontWeight: 400 }}>{size}</span>}
       </div>
       <div style={{ ...lineStyle, fontWeight: 700 }}>{price}</div>
@@ -469,20 +501,20 @@ function LabelHalf({ product }) {
   );
 }
 
-function PrintLabel({ product }) {
+function PrintLabel({ product, variant }) {
   return (
     <div className="print-label" style={labelBaseStyle} data-testid="print-label">
       <div style={textAreaStyle}>
-        <LabelHalf product={product} />
+        <LabelHalf product={product} variant={variant} />
         <div style={perforationStyle} />
-        <LabelHalf product={product} />
+        <LabelHalf product={product} variant={variant} />
       </div>
       <div style={tailStyle} />
     </div>
   );
 }
 
-function LabelPreview({ product }) {
+function LabelPreview({ product, variant }) {
   // Same visual as PrintLabel, but with borders so it is visible on screen.
   return (
     <div
@@ -494,9 +526,9 @@ function LabelPreview({ product }) {
       data-testid="etiquetas-preview-item"
     >
       <div style={{ ...textAreaStyle, borderRight: "0.3mm dashed #C97D63" }}>
-        <LabelHalf product={product} />
+        <LabelHalf product={product} variant={variant} />
         <div style={perforationStyle} />
-        <LabelHalf product={product} />
+        <LabelHalf product={product} variant={variant} />
       </div>
       <div
         style={{

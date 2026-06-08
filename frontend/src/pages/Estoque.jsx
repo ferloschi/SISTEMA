@@ -90,9 +90,8 @@ export default function Estoque() {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
-  }, [search]);
+  }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openNew = () => {
     setEditing(null);
