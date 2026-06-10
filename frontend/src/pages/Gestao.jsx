@@ -68,6 +68,7 @@ export default function Gestao() {
 
   const [year, setYear] = useState(new Date().getFullYear());
   const [monthly, setMonthly] = useState([]);
+  const [products, setProducts] = useState([]);
 
   // Procedimentos realizados
   const [appointments, setAppointments] = useState([]);
@@ -77,14 +78,16 @@ export default function Gestao() {
   const [statusFilter, setStatusFilter] = useState("realizado");
 
   const load = async () => {
-    const [pm, m, a] = await Promise.all([
+    const [pm, m, a, p] = await Promise.all([
       api.get("/payment-methods"),
       api.get("/reports/monthly", { params: { year } }),
       api.get("/appointments"),
+      api.get("/products"),
     ]);
     setMethods(pm.data);
     setMonthly(m.data);
     setAppointments(a.data);
+    setProducts(p.data);
   };
 
   useEffect(() => {
@@ -174,6 +177,32 @@ export default function Gestao() {
     { gross: 0, profit: 0, fees: 0, cost: 0, count: 0 }
   );
 
+  // Valor total do estoque: soma (qty * preço) de todas as variantes.
+  const stockTotals = useMemo(() => {
+    let cost = 0;
+    let sale = 0;
+    let units = 0;
+    for (const p of products) {
+      const variants =
+        p.variants && p.variants.length > 0
+          ? p.variants
+          : [
+              {
+                stock_qty: p.stock_qty,
+                purchase_value: p.purchase_value,
+                sale_value: p.sale_value,
+              },
+            ];
+      for (const v of variants) {
+        const qty = Number(v.stock_qty) || 0;
+        cost += qty * (Number(v.purchase_value) || 0);
+        sale += qty * (Number(v.sale_value) || 0);
+        units += qty;
+      }
+    }
+    return { cost, sale, units };
+  }, [products]);
+
   return (
     <div className="space-y-6" data-testid="gestao-page">
       <Tabs
@@ -241,6 +270,70 @@ export default function Gestao() {
               <p className="stat-number text-xl mt-1 text-[#5C7053]">
                 {formatBRL(yearTotals.profit)}
               </p>
+            </div>
+          </div>
+
+          {/* Estoque atual — capital parado em produtos */}
+          <div
+            className="brinquinho-card p-6"
+            data-testid="stock-valuation-card"
+          >
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+              <div>
+                <h3 className="font-heading text-lg font-semibold text-[#2D2825]">
+                  Valor do estoque atual
+                </h3>
+                <p className="text-xs text-[#7A726D] mt-1">
+                  Soma (quantidade × preço) de todas as variantes em estoque hoje.
+                </p>
+              </div>
+              <span className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                {stockTotals.units} unidade(s) em estoque
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="rounded-xl border border-[#EBE8E3] p-4 bg-[#FBF6F2]/60">
+                <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                  Custo total do estoque
+                </p>
+                <p
+                  className="stat-number text-2xl mt-1 text-[#2D2825]"
+                  data-testid="stock-cost-total"
+                >
+                  {formatBRL(stockTotals.cost)}
+                </p>
+                <p className="text-[11px] text-[#7A726D] mt-1">
+                  Investimento de compra ainda parado em joias
+                </p>
+              </div>
+              <div className="rounded-xl border border-[#EBE8E3] p-4 bg-[#F2E4DF]/60">
+                <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                  Valor de venda do estoque
+                </p>
+                <p
+                  className="stat-number text-2xl mt-1 text-[#C97D63]"
+                  data-testid="stock-sale-total"
+                >
+                  {formatBRL(stockTotals.sale)}
+                </p>
+                <p className="text-[11px] text-[#7A726D] mt-1">
+                  Receita potencial se vender todo estoque atual
+                </p>
+              </div>
+              <div className="rounded-xl border border-[#EBE8E3] p-4 bg-[#E5F1E0]/40">
+                <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                  Margem potencial
+                </p>
+                <p
+                  className="stat-number text-2xl mt-1 text-[#5C7053]"
+                  data-testid="stock-margin-total"
+                >
+                  {formatBRL(stockTotals.sale - stockTotals.cost)}
+                </p>
+                <p className="text-[11px] text-[#7A726D] mt-1">
+                  Diferença entre valor de venda e custo
+                </p>
+              </div>
             </div>
           </div>
 
