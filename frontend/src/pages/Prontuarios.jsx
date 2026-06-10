@@ -73,7 +73,38 @@ const ANAMNESE_QUESTIONS = [
     label: "Prematuridade?",
     detail: "Quantas semanas nasceu?",
   },
-  { key: "dermatite", label: "Dermatite?", detail: "Local:" },
+  {
+    key: "herpes_ativa",
+    label: "Possui herpes ativa?",
+    detail: "Retornar em:",
+    detailType: "date",
+    forLobuloplastia: true,
+  },
+  {
+    key: "dermatite",
+    label: "Possui dermatite?",
+    detail: "Retornar em:",
+    detailType: "date",
+    forLobuloplastia: true,
+  },
+  {
+    key: "lactante",
+    label: "Lactante?",
+    forLobuloplastia: true,
+  },
+  {
+    key: "lobuloplastia_previa",
+    label: "Já fez lobuloplastia?",
+    detail: "Como foi?",
+    forLobuloplastia: true,
+  },
+  {
+    key: "motivo_lesao",
+    label: "Qual motivo que levou a lesão da orelha?",
+    infoOnly: true,
+    detail: "Anotação",
+    forLobuloplastia: true,
+  },
   {
     key: "pomada_anestesica",
     label: "Solicitou pomada/anestésico?",
@@ -93,57 +124,83 @@ const AnamneseQuestion = ({ q, value, onChange }) => {
     }`;
   return (
     <div className="p-3 rounded-lg bg-white border border-[#EBE8E3]">
-      <p className="text-sm font-medium text-[#2D2825]">{q.label}</p>
-      <div className="flex items-center gap-2 mt-2 flex-wrap">
-        <button
-          type="button"
-          onClick={() => setVal("sim")}
-          style={
-            val.value === "sim"
-              ? { background: "#C97D63", color: "#fff", borderColor: "transparent" }
-              : {}
-          }
-          className={btnCls(val.value === "sim")}
-        >
-          Sim
-        </button>
-        <button
-          type="button"
-          onClick={() => setVal("nao")}
-          style={
-            val.value === "nao"
-              ? { background: "#5C7053", color: "#fff", borderColor: "transparent" }
-              : {}
-          }
-          className={btnCls(val.value === "nao")}
-        >
-          Não
-        </button>
-        {q.hasUnknown && (
-          <button
-            type="button"
-            onClick={() => setVal("nao_sabe")}
-            style={
-              val.value === "nao_sabe"
-                ? { background: "#7A726D", color: "#fff", borderColor: "transparent" }
-                : {}
-            }
-            className={btnCls(val.value === "nao_sabe")}
+      <p className="text-sm font-medium text-[#2D2825]">
+        {q.label}
+        {q.forLobuloplastia && (
+          <sup
+            className="text-[#D06B6B] ml-1 text-[10px] font-medium"
+            title="Pergunta usada para lobuloplastia"
           >
-            Não sabe
-          </button>
+            *para lobuloplastia
+          </sup>
         )}
-      </div>
-      {val.value === "sim" && q.detail && (
+      </p>
+      {q.infoOnly ? (
         <Input
           className="mt-2"
-          placeholder={q.detail}
+          placeholder={q.detail || "Anotação"}
           value={val.detail || ""}
           onChange={(e) => setDetail(e.target.value)}
         />
-      )}
-      {val.value === "sim" && q.simHint && (
-        <p className="text-xs text-[#C97D63] mt-2 font-medium">{q.simHint}</p>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setVal("sim")}
+              style={
+                val.value === "sim"
+                  ? { background: "#C97D63", color: "#fff", borderColor: "transparent" }
+                  : {}
+              }
+              className={btnCls(val.value === "sim")}
+            >
+              Sim
+            </button>
+            <button
+              type="button"
+              onClick={() => setVal("nao")}
+              style={
+                val.value === "nao"
+                  ? { background: "#5C7053", color: "#fff", borderColor: "transparent" }
+                  : {}
+              }
+              className={btnCls(val.value === "nao")}
+            >
+              Não
+            </button>
+            {q.hasUnknown && (
+              <button
+                type="button"
+                onClick={() => setVal("nao_sabe")}
+                style={
+                  val.value === "nao_sabe"
+                    ? { background: "#7A726D", color: "#fff", borderColor: "transparent" }
+                    : {}
+                }
+                className={btnCls(val.value === "nao_sabe")}
+              >
+                Não sabe
+              </button>
+            )}
+          </div>
+          {val.value === "sim" && q.detail && (
+            <div className="mt-2">
+              {q.detailType === "date" && (
+                <p className="text-[11px] text-[#7A726D] mb-1">{q.detail}</p>
+              )}
+              <Input
+                type={q.detailType === "date" ? "date" : "text"}
+                placeholder={q.detailType === "date" ? "" : q.detail}
+                value={val.detail || ""}
+                onChange={(e) => setDetail(e.target.value)}
+              />
+            </div>
+          )}
+          {val.value === "sim" && q.simHint && (
+            <p className="text-xs text-[#C97D63] mt-2 font-medium">{q.simHint}</p>
+          )}
+        </>
       )}
     </div>
   );
