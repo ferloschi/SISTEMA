@@ -13,6 +13,8 @@ import {
   Calendar,
   Check,
   Clock,
+  X,
+  Trash2,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -38,11 +40,21 @@ const BUCKET_META = {
   outros: { label: "Outros", color: "#7A726D", icon: TrendingUp },
 };
 
-const Card = ({ bucket, value, count }) => {
+const Card = ({ bucket, value, count, onDelete }) => {
   const meta = BUCKET_META[bucket];
   const Icon = meta.icon;
   return (
-    <div className="brinquinho-card p-5" data-testid={`finance-card-${bucket}`}>
+    <div className="brinquinho-card p-5 relative" data-testid={`finance-card-${bucket}`}>
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          title={`Excluir vendas em ${meta.label}`}
+          data-testid={`finance-card-${bucket}-delete`}
+          className="absolute top-2 right-2 p-1.5 rounded-lg text-[#7A726D] hover:text-[#D06B6B] hover:bg-[#FBE7E7]"
+        >
+          <X className="w-3.5 h-3.5" strokeWidth={2} />
+        </button>
+      )}
       <div className="flex items-start justify-between">
         <div>
           <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
@@ -76,6 +88,48 @@ export default function GestaoFinanceira() {
     const params = scope === "month" ? { month } : { year };
     const res = await api.get("/finance/summary", { params });
     setSummary(res.data);
+  };
+
+  const deleteBucket = async (bucket) => {
+    const scopeLabel = scope === "month" ? `mês ${month}` : `ano ${year}`;
+    if (
+      !window.confirm(
+        `Excluir TODAS as vendas em ${BUCKET_META[bucket].label} no ${scopeLabel}?\n\n` +
+          "O estoque dos produtos vendidos será devolvido.\n" +
+          "Esta ação não pode ser desfeita."
+      )
+    )
+      return;
+    try {
+      const params = { bucket };
+      if (scope === "month") params.month = month;
+      else params.year = year;
+      const res = await api.post("/sales/bulk-delete", null, { params });
+      toast.success(`${res.data.deleted || 0} venda(s) excluída(s)`);
+      loadSummary();
+      loadCardSales();
+      loadReceivables();
+    } catch {
+      toast.error("Erro ao excluir vendas");
+    }
+  };
+
+  const deleteInstallment = async (sale, installmentNum) => {
+    if (
+      !window.confirm(
+        `Excluir a parcela ${installmentNum}/${sale.installments || 1} da venda de ${sale.patient_name || "cliente"}?\n\n` +
+          "Apenas esta parcela sai da lista de recebimentos. A venda em si continua registrada."
+      )
+    )
+      return;
+    try {
+      await api.delete(`/sales/${sale.id}/installments/${installmentNum}`);
+      toast.success("Parcela excluída");
+      loadCardSales();
+      loadReceivables();
+    } catch {
+      toast.error("Erro ao excluir parcela");
+    }
   };
 
   const loadCard = async () => {
@@ -227,17 +281,25 @@ export default function GestaoFinanceira() {
               bucket="dinheiro"
               value={buckets.dinheiro || 0}
               count={counts.dinheiro || 0}
+              onDelete={() => deleteBucket("dinheiro")}
             />
-            <Card bucket="pix" value={buckets.pix || 0} count={counts.pix || 0} />
+            <Card
+              bucket="pix"
+              value={buckets.pix || 0}
+              count={counts.pix || 0}
+              onDelete={() => deleteBucket("pix")}
+            />
             <Card
               bucket="debito"
               value={buckets.debito || 0}
               count={counts.debito || 0}
+              onDelete={() => deleteBucket("debito")}
             />
             <Card
               bucket="cartao_parcelado"
               value={buckets.cartao_parcelado || 0}
               count={counts.cartao_parcelado || 0}
+              onDelete={() => deleteBucket("cartao_parcelado")}
             />
           </div>
 
@@ -420,38 +482,50 @@ export default function GestaoFinanceira() {
                           {s.receive_schedule.map((r) => {
                             const received = !!r.received;
                             return (
-                              <button
+                              <div
                                 key={r.installment}
-                                onClick={() => toggleInstallment(s, r)}
-                                data-testid={`installment-${s.id}-${r.installment}`}
-                                className={`text-xs px-3 py-1.5 rounded-lg border transition flex items-center gap-2 ${
+                                className={`inline-flex items-center rounded-lg border transition ${
                                   received
-                                    ? "bg-[#E4EDDF] border-[#C8DABF] hover:bg-[#D8E5D0]"
-                                    : "bg-[#F2E4DF]/60 border-[#E8CFC1] hover:bg-[#F2E4DF]"
+                                    ? "bg-[#E4EDDF] border-[#C8DABF]"
+                                    : "bg-[#F2E4DF]/60 border-[#E8CFC1]"
                                 }`}
                               >
-                                {received ? (
-                                  <Check
-                                    className="w-3 h-3 text-[#5C7053]"
-                                    strokeWidth={2.5}
-                                  />
-                                ) : (
-                                  <Clock
-                                    className="w-3 h-3 text-[#C97D63]"
-                                    strokeWidth={1.5}
-                                  />
-                                )}
-                                <span className="text-[#7A726D]">
-                                  {formatDate(r.date)}
-                                </span>
-                                <span
-                                  className={`font-semibold ${
-                                    received ? "text-[#5C7053]" : "text-[#C97D63]"
-                                  }`}
+                                <button
+                                  onClick={() => toggleInstallment(s, r)}
+                                  data-testid={`installment-${s.id}-${r.installment}`}
+                                  className="text-xs px-3 py-1.5 rounded-l-lg flex items-center gap-2 hover:bg-black/5"
                                 >
-                                  {formatBRL(r.value)}
-                                </span>
-                              </button>
+                                  {received ? (
+                                    <Check
+                                      className="w-3 h-3 text-[#5C7053]"
+                                      strokeWidth={2.5}
+                                    />
+                                  ) : (
+                                    <Clock
+                                      className="w-3 h-3 text-[#C97D63]"
+                                      strokeWidth={1.5}
+                                    />
+                                  )}
+                                  <span className="text-[#7A726D]">
+                                    {formatDate(r.date)}
+                                  </span>
+                                  <span
+                                    className={`font-semibold ${
+                                      received ? "text-[#5C7053]" : "text-[#C97D63]"
+                                    }`}
+                                  >
+                                    {formatBRL(r.value)}
+                                  </span>
+                                </button>
+                                <button
+                                  onClick={() => deleteInstallment(s, r.installment)}
+                                  data-testid={`installment-delete-${s.id}-${r.installment}`}
+                                  title="Excluir esta parcela"
+                                  className="p-1.5 rounded-r-lg border-l border-inherit text-[#7A726D] hover:text-[#D06B6B] hover:bg-[#FBE7E7]"
+                                >
+                                  <Trash2 className="w-3 h-3" strokeWidth={1.5} />
+                                </button>
+                              </div>
                             );
                           })}
                         </div>

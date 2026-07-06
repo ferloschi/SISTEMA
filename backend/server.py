@@ -946,6 +946,68 @@ class ReceivedPayload(BaseModel):
     received: bool
 
 
+@api_router.post("/sales/bulk-delete")
+async def bulk_delete_sales(
+    month: Optional[str] = None,
+    year: Optional[int] = None,
+    bucket: Optional[str] = None,
+):
+    """Bulk delete sales filtered by month (YYYY-MM), year, and/or bucket.
+    Restores stock for each product/variant on the deleted sales.
+
+    bucket values match /finance/summary: dinheiro, pix, debito, cartao_parcelado, outros
+    """
+    query: Dict[str, Any] = {}
+    if month:
+        query["sale_date"] = {"$regex": f"^{month}"}
+    elif year:
+        query["sale_date"] = {"$regex": f"^{year}-"}
+
+    bucket_map = {
+        "dinheiro": ["Dinheiro"],
+        "pix": ["PIX", "Pix"],
+        "debito": ["Cartão Débito", "Débito"],
+        "cartao_parcelado": ["Cartão Crédito", "Crédito"],
+    }
+    if bucket == "cartao_parcelado":
+        query["payment_method_name"] = {"$in": bucket_map["cartao_parcelado"]}
+    elif bucket in bucket_map:
+        query["payment_method_name"] = {"$in": bucket_map[bucket]}
+    elif bucket == "outros":
+        known = sum(bucket_map.values(), [])
+        query["payment_method_name"] = {"$nin": known}
+
+    cursor = db.sales.find(query, {"_id": 0})
+    ids = []
+    async for sale in cursor:
+        ids.append(sale["id"])
+        for it in sale.get("items", []):
+            if it.get("product_id"):
+                await _increment_variant_stock(
+                    it["product_id"], it.get("variant_id"), int(it.get("qty", 0))
+                )
+    if ids:
+        await db.sales.delete_many({"id": {"$in": ids}})
+    return {"ok": True, "deleted": len(ids)}
+
+
+@api_router.delete("/sales/{sale_id}/installments/{installment_num}")
+async def delete_installment(sale_id: str, installment_num: int):
+    """Remove a single installment from a sale's receive schedule.
+    The sale itself is kept (other installments remain)."""
+    existing = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Venda não encontrada")
+    schedule = existing.get("receive_schedule") or []
+    new_schedule = [r for r in schedule if int(r.get("installment", 0)) != installment_num]
+    if len(new_schedule) == len(schedule):
+        raise HTTPException(404, "Parcela não encontrada")
+    await db.sales.update_one(
+        {"id": sale_id}, {"$set": {"receive_schedule": new_schedule}}
+    )
+    return {"ok": True, "remaining": len(new_schedule)}
+
+
 @api_router.patch("/sales/{sale_id}/installments/{installment_num}")
 async def toggle_installment_received(sale_id: str, installment_num: int, payload: ReceivedPayload):
     """Mark an installment as received/pending."""

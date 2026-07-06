@@ -29,6 +29,7 @@ import {
   CreditCard,
   Stethoscope,
   Calendar as CalendarIcon,
+  X,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -88,6 +89,24 @@ export default function Gestao() {
     setMonthly(m.data);
     setAppointments(a.data);
     setProducts(p.data);
+  };
+
+  const deleteYearSales = async () => {
+    if (
+      !window.confirm(
+        `Excluir TODAS as vendas do ano ${year}?\n\n` +
+          "O estoque dos produtos vendidos será devolvido.\n" +
+          "Esta ação não pode ser desfeita."
+      )
+    )
+      return;
+    try {
+      const res = await api.post("/sales/bulk-delete", null, { params: { year } });
+      toast.success(`${res.data.deleted || 0} venda(s) excluída(s) do ano ${year}`);
+      load();
+    } catch {
+      toast.error("Erro ao excluir vendas do ano");
+    }
   };
 
   useEffect(() => {
@@ -247,30 +266,28 @@ export default function Gestao() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="brinquinho-card p-4">
-              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">Vendas</p>
-              <p className="stat-number text-xl mt-1">{yearTotals.count}</p>
-            </div>
-            <div className="brinquinho-card p-4">
-              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">Bruto</p>
-              <p className="stat-number text-xl mt-1">{formatBRL(yearTotals.gross)}</p>
-            </div>
-            <div className="brinquinho-card p-4">
-              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">Custo</p>
-              <p className="stat-number text-xl mt-1">{formatBRL(yearTotals.cost)}</p>
-            </div>
-            <div className="brinquinho-card p-4">
-              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">Taxas</p>
-              <p className="stat-number text-xl mt-1 text-[#D06B6B]">
-                {formatBRL(yearTotals.fees)}
-              </p>
-            </div>
-            <div className="brinquinho-card p-4">
-              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">Lucro</p>
-              <p className="stat-number text-xl mt-1 text-[#5C7053]">
-                {formatBRL(yearTotals.profit)}
-              </p>
-            </div>
+            {[
+              { key: "count", label: "Vendas", value: yearTotals.count, color: "" },
+              { key: "gross", label: "Bruto", value: formatBRL(yearTotals.gross), color: "" },
+              { key: "cost", label: "Custo", value: formatBRL(yearTotals.cost), color: "" },
+              { key: "fees", label: "Taxas", value: formatBRL(yearTotals.fees), color: "text-[#D06B6B]" },
+              { key: "profit", label: "Lucro", value: formatBRL(yearTotals.profit), color: "text-[#5C7053]" },
+            ].map((c) => (
+              <div key={c.key} className="brinquinho-card p-4 relative">
+                <button
+                  onClick={deleteYearSales}
+                  title={`Excluir todas as vendas de ${year}`}
+                  data-testid={`year-card-${c.key}-delete`}
+                  className="absolute top-2 right-2 p-1.5 rounded-lg text-[#7A726D] hover:text-[#D06B6B] hover:bg-[#FBE7E7]"
+                >
+                  <X className="w-3.5 h-3.5" strokeWidth={2} />
+                </button>
+                <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+                  {c.label}
+                </p>
+                <p className={`stat-number text-xl mt-1 ${c.color}`}>{c.value}</p>
+              </div>
+            ))}
           </div>
 
           {/* Estoque atual — capital parado em produtos */}

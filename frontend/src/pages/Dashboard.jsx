@@ -11,6 +11,7 @@ import {
   Phone,
   MessageCircle,
   CheckCircle2,
+  X,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -70,8 +71,18 @@ function digitsOnly(s) {
   return (s || "").replace(/\D/g, "");
 }
 
-const StatCard = ({ icon: Icon, label, value, hint, accent = "#C97D63", testid }) => (
-  <div className="brinquinho-card p-6" data-testid={testid}>
+const StatCard = ({ icon: Icon, label, value, hint, accent = "#C97D63", testid, onDelete, deleteTitle }) => (
+  <div className="brinquinho-card p-6 relative" data-testid={testid}>
+    {onDelete && (
+      <button
+        onClick={onDelete}
+        title={deleteTitle || "Excluir"}
+        data-testid={`${testid}-delete`}
+        className="absolute top-2 right-2 p-1.5 rounded-lg text-[#7A726D] hover:text-[#D06B6B] hover:bg-[#FBE7E7]"
+      >
+        <X className="w-3.5 h-3.5" strokeWidth={2} />
+      </button>
+    )}
     <div className="flex items-start justify-between">
       <div>
         <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">{label}</p>
@@ -121,6 +132,26 @@ export default function Dashboard() {
     }
   };
 
+  const deleteMonthSales = async () => {
+    if (
+      !window.confirm(
+        `Excluir TODAS as vendas do mês ${data.month}?\n\n` +
+          "O estoque dos produtos vendidos será devolvido.\n" +
+          "Esta ação não pode ser desfeita."
+      )
+    )
+      return;
+    try {
+      const res = await api.post("/sales/bulk-delete", null, {
+        params: { month: data.month },
+      });
+      toast.success(`${res.data.deleted || 0} venda(s) excluída(s)`);
+      load();
+    } catch {
+      toast.error("Erro ao excluir vendas do mês");
+    }
+  };
+
   if (loading || !data) {
     return (
       <div className="text-[#7A726D]" data-testid="dashboard-loading">
@@ -139,6 +170,8 @@ export default function Dashboard() {
           hint={`${data.sales_count} vendas em ${data.month}`}
           accent="#C97D63"
           testid="stat-month-gross"
+          onDelete={deleteMonthSales}
+          deleteTitle={`Excluir todas as vendas de ${data.month}`}
         />
         <StatCard
           icon={PiggyBank}
@@ -147,6 +180,8 @@ export default function Dashboard() {
           hint={`Taxas: ${formatBRL(data.month_fees)}`}
           accent="#8A9E82"
           testid="stat-month-profit"
+          onDelete={deleteMonthSales}
+          deleteTitle={`Excluir todas as vendas de ${data.month}`}
         />
         <StatCard
           icon={Calendar}
@@ -179,6 +214,8 @@ export default function Dashboard() {
           hint="Produtos vendidos no mês"
           accent="#7A726D"
           testid="stat-month-cost"
+          onDelete={deleteMonthSales}
+          deleteTitle={`Excluir todas as vendas de ${data.month}`}
         />
       </div>
 
