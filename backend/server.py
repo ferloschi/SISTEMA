@@ -932,7 +932,7 @@ class ReceivedPayload(BaseModel):
     received: bool
 
 
-@api_router.post("/sales/bulk-delete")
+@api_router.api_route("/sales/bulk-delete", methods=["POST", "DELETE"])
 async def bulk_delete_sales(
     month: Optional[str] = None,
     year: Optional[int] = None,
