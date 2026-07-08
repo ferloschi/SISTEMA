@@ -943,7 +943,7 @@ async def bulk_delete_sales(
 
     bucket values match /finance/summary: dinheiro, pix, debito, cartao_parcelado, outros
 
-    IMPORTANTE: esta rota deve ficar ANTES de DELETE /sales/{sale_id} para evitar
+    NOTA: esta rota deve ficar ANTES de DELETE /sales/{sale_id} para evitar
     que o FastAPI interprete 'bulk-delete' como um sale_id.
     """
     query: Dict[str, Any] = {}
