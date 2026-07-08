@@ -928,20 +928,6 @@ async def create_sale(payload: SaleCreate):
     return sale
 
 
-@api_router.delete("/sales/{sale_id}")
-async def delete_sale(sale_id: str):
-    existing = await db.sales.find_one({"id": sale_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(404, "Venda não encontrada")
-    for it in existing.get("items", []):
-        if it.get("product_id"):
-            await _increment_variant_stock(
-                it["product_id"], it.get("variant_id"), int(it.get("qty", 0))
-            )
-    await db.sales.delete_one({"id": sale_id})
-    return {"ok": True}
-
-
 class ReceivedPayload(BaseModel):
     received: bool
 
@@ -956,6 +942,9 @@ async def bulk_delete_sales(
     Restores stock for each product/variant on the deleted sales.
 
     bucket values match /finance/summary: dinheiro, pix, debito, cartao_parcelado, outros
+
+    IMPORTANTE: esta rota deve ficar ANTES de DELETE /sales/{sale_id} para evitar
+    que o FastAPI interprete 'bulk-delete' como um sale_id.
     """
     query: Dict[str, Any] = {}
     if month:
@@ -989,6 +978,20 @@ async def bulk_delete_sales(
     if ids:
         await db.sales.delete_many({"id": {"$in": ids}})
     return {"ok": True, "deleted": len(ids)}
+
+
+@api_router.delete("/sales/{sale_id}")
+async def delete_sale(sale_id: str):
+    existing = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Venda não encontrada")
+    for it in existing.get("items", []):
+        if it.get("product_id"):
+            await _increment_variant_stock(
+                it["product_id"], it.get("variant_id"), int(it.get("qty", 0))
+            )
+    await db.sales.delete_one({"id": sale_id})
+    return {"ok": True}
 
 
 @api_router.delete("/sales/{sale_id}/installments/{installment_num}")
