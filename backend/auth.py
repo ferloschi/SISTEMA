@@ -22,7 +22,7 @@ from pydantic import BaseModel, EmailStr
 
 
 JWT_ALGORITHM = "HS256"
-JWT_EXP_HOURS = 8
+JWT_EXP_HOURS = 24 * 30  # 30 dias — sistema interno
 
 
 # ---------------------------------------------------------------------------

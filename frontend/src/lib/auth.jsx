@@ -19,9 +19,16 @@ export function AuthProvider({ children }) {
       (r) => r,
       (err) => {
         if (err?.response?.status === 401) {
+          const wasLoggedIn = !!localStorage.getItem(TOKEN_KEY);
           localStorage.removeItem(TOKEN_KEY);
           setToken(null);
           setUser(false);
+          if (wasLoggedIn) {
+            // Avisa o usuário que a sessão expirou
+            import("sonner").then(({ toast }) => {
+              toast.error("Sessão expirada. Faça login novamente.", { duration: 6000 });
+            }).catch(() => {});
+          }
         }
         return Promise.reject(err);
       }
