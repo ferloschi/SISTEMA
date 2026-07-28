@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, formatDate, formatBRL } from "@/lib/api";
+import {
+  whatsappLink as buildWhatsAppLink,
+  DEFAULT_WHATSAPP_TEMPLATE,
+} from "@/lib/whatsapp";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +16,7 @@ import {
   Search,
   HeartPulse,
   History,
+  Sparkles,
   X,
 } from "lucide-react";
 
@@ -21,25 +26,6 @@ const TABS = [
   { id: "contatado", label: "Já contatados" },
   { id: "all", label: "Todos" },
 ];
-
-// Saudação padrão para o follow-up de 45 dias via WhatsApp.
-// Mantida curta e acolhedora; a Dra. pode editar antes de enviar.
-function buildWhatsAppMessage(name) {
-  const first = ((name || "").split(" ")[0] || "").trim();
-  const saudacao = first ? `Oi, ${first}!` : "Oi!";
-  return (
-    `${saudacao} Aqui é da Clínica Dra. Brinquinho. ` +
-    "Passando para saber como está a cicatrização do seu piercing feito há cerca de 45 dias. " +
-    "Está tudo bem? Alguma dúvida ou incômodo? Fico à disposição."
-  );
-}
-
-function whatsappLink(phone, name) {
-  const tel = (phone || "").replace(/\D/g, "");
-  const full = tel.length === 11 ? "55" + tel : tel;
-  const text = encodeURIComponent(buildWhatsAppMessage(name));
-  return `https://wa.me/${full}?text=${text}`;
-}
 
 function daysUntil(iso) {
   if (!iso) return null;
@@ -95,6 +81,17 @@ export default function PosVenda() {
   // Cliente selecionada para ver histórico (nome + telefone).
   // Quando definido, força o tab "all" e filtra apenas por essa cliente.
   const [historyOf, setHistoryOf] = useState(null);
+  // Template WhatsApp vindo das Configurações — carregado uma vez ao montar.
+  const [waTemplate, setWaTemplate] = useState(DEFAULT_WHATSAPP_TEMPLATE);
+
+  useEffect(() => {
+    api
+      .get("/settings")
+      .then((r) => setWaTemplate(r.data.whatsapp_template || DEFAULT_WHATSAPP_TEMPLATE))
+      .catch(() => {});
+  }, []);
+
+  const waLink = (r) => buildWhatsAppLink(r.phone, r.patient_name, waTemplate);
 
   const load = async () => {
     setLoading(true);
@@ -287,14 +284,26 @@ export default function PosVenda() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <button
-                            onClick={() => openHistory(r)}
-                            data-testid={`posventa-history-open-mobile-${r.id}`}
-                            className="text-left font-medium text-[#2D2825] truncate hover:text-[#C97D63] hover:underline underline-offset-2"
-                            title="Ver histórico dessa cliente"
-                          >
-                            {r.patient_name || "—"}
-                          </button>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              onClick={() => openHistory(r)}
+                              data-testid={`posventa-history-open-mobile-${r.id}`}
+                              className="text-left font-medium text-[#2D2825] truncate hover:text-[#C97D63] hover:underline underline-offset-2"
+                              title="Ver histórico dessa cliente"
+                            >
+                              {r.patient_name || "—"}
+                            </button>
+                            {r.sale_count > 1 && (
+                              <span
+                                data-testid={`posventa-recurring-mobile-${r.id}`}
+                                title={`Cliente recorrente — ${r.sale_count} compras`}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1]"
+                              >
+                                <Sparkles className="w-2.5 h-2.5" strokeWidth={2} />
+                                Recorrente {r.sale_count}x
+                              </span>
+                            )}
+                          </div>
                           {r.items_summary && (
                             <p className="text-xs text-[#7A726D] line-clamp-2">
                               {r.items_summary}
@@ -322,7 +331,7 @@ export default function PosVenda() {
                             <Phone className="w-3.5 h-3.5" strokeWidth={1.5} />
                           </a>
                           <a
-                            href={whatsappLink(r.phone, r.patient_name)}
+                            href={waLink(r)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1.5 rounded-lg bg-[#E5F1E0] text-[#5C7053]"
@@ -387,15 +396,27 @@ export default function PosVenda() {
                           <UrgencyBadge iso={r.post_sale_date} contacted={r.post_sale_contacted} />
                         </td>
                         <td className="py-3 px-4 font-medium text-[#2D2825]">
-                          <button
-                            onClick={() => openHistory(r)}
-                            data-testid={`posventa-history-open-${r.id}`}
-                            className="text-left hover:text-[#C97D63] hover:underline underline-offset-2 inline-flex items-center gap-1.5"
-                            title="Ver histórico dessa cliente"
-                          >
-                            {r.patient_name || "—"}
-                            <History className="w-3 h-3 text-[#C97D63] opacity-70" strokeWidth={1.5} />
-                          </button>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              onClick={() => openHistory(r)}
+                              data-testid={`posventa-history-open-${r.id}`}
+                              className="text-left hover:text-[#C97D63] hover:underline underline-offset-2 inline-flex items-center gap-1.5"
+                              title="Ver histórico dessa cliente"
+                            >
+                              {r.patient_name || "—"}
+                              <History className="w-3 h-3 text-[#C97D63] opacity-70" strokeWidth={1.5} />
+                            </button>
+                            {r.sale_count > 1 && (
+                              <span
+                                data-testid={`posventa-recurring-${r.id}`}
+                                title={`Cliente recorrente — ${r.sale_count} compras`}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1]"
+                              >
+                                <Sparkles className="w-2.5 h-2.5" strokeWidth={2} />
+                                Recorrente {r.sale_count}x
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-[#7A726D] max-w-xs truncate">
                           {r.items_summary || "—"}
@@ -412,7 +433,7 @@ export default function PosVenda() {
                                 <Phone className="w-3.5 h-3.5" strokeWidth={1.5} />
                               </a>
                               <a
-                                href={whatsappLink(r.phone, r.patient_name)}
+                                href={waLink(r)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title="WhatsApp com mensagem pronta"

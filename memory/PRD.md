@@ -48,6 +48,11 @@
 - ✅ Seleção múltipla com quantidade por produto e contador total
 - ✅ Pré-visualização em tela e CSS `@media print` com `@page size: 95mm 12mm` para rolo contínuo
 
+### Iteração 6 (2026-07-28) — Personalização de Mensagem e Cliente Recorrente
+- ✅ **Mensagem WhatsApp editável**: novo endpoint `GET/PUT /api/settings` armazena o template no MongoDB. Página Configurações ganhou seção com editor, prévia ao vivo e botão "Restaurar padrão". Placeholders suportados: `{nome}` e `{primeiro_nome}`
+- ✅ **Selinho "Recorrente Nx"**: `/post-sale` e `/reminders/pending` agora retornam `sale_count` por cliente (agrupado por telefone ou nome). Pós-venda mostra badge "Recorrente 3x" (mobile e desktop) quando a cliente já comprou mais de uma vez
+- ✅ Helper compartilhado `/frontend/src/lib/whatsapp.js` centraliza renderização do template em Pós-venda + Dashboard
+
 ### Iteração 5 (2026-07-28) — Melhorias na Pós-venda e Estoque
 - ✅ **Variant ID em vendas**: `Vendas.jsx` agora envia `variant_id` no payload de itens; estoque decrementa da cor/material corretos
 - ✅ **Filtro por cliente na Pós-venda**: clique no nome da cliente abre banner com histórico completo (mesmo nome ou telefone), com botão "Limpar filtro"

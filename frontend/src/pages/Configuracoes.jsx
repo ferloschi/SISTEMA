@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { renderTemplate, DEFAULT_WHATSAPP_TEMPLATE } from "@/lib/whatsapp";
 import { useAuth } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Mail, KeyRound, Shield } from "lucide-react";
+import { Mail, KeyRound, Shield, MessageCircle, RotateCcw } from "lucide-react";
 
 export default function Configuracoes() {
   const { user, refreshMe, logout } = useAuth();
@@ -24,6 +26,22 @@ export default function Configuracoes() {
   });
   const [pwLoading, setPwLoading] = useState(false);
 
+  // WhatsApp template
+  const [waTemplate, setWaTemplate] = useState(DEFAULT_WHATSAPP_TEMPLATE);
+  const [waLoaded, setWaLoaded] = useState(false);
+  const [waLoading, setWaLoading] = useState(false);
+
+  const loadSettings = async () => {
+    try {
+      const { data } = await api.get("/settings");
+      setWaTemplate(data.whatsapp_template || DEFAULT_WHATSAPP_TEMPLATE);
+    } catch {
+      // silent — fica com o default
+    } finally {
+      setWaLoaded(true);
+    }
+  };
+
   const loadMe = async () => {
     try {
       const { data } = await api.get("/auth/me");
@@ -35,8 +53,36 @@ export default function Configuracoes() {
 
   useEffect(() => {
     loadMe();
+    loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const submitWaTemplate = async (e) => {
+    e.preventDefault();
+    const trimmed = waTemplate.trim();
+    if (!trimmed) {
+      toast.error("A mensagem não pode ficar vazia.");
+      return;
+    }
+    setWaLoading(true);
+    try {
+      const { data } = await api.put("/settings", {
+        whatsapp_template: trimmed,
+      });
+      setWaTemplate(data.whatsapp_template);
+      toast.success("Mensagem do WhatsApp atualizada");
+    } catch (err) {
+      const d = err?.response?.data?.detail;
+      toast.error(typeof d === "string" ? d : "Erro ao salvar mensagem");
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
+  const resetWaTemplate = () => {
+    setWaTemplate(DEFAULT_WHATSAPP_TEMPLATE);
+    toast.message("Mensagem restaurada — clique em Salvar para aplicar.");
+  };
 
   const submitEmail = async (e) => {
     e.preventDefault();
@@ -232,6 +278,79 @@ export default function Configuracoes() {
             >
               {pwLoading ? "Salvando..." : "Alterar senha"}
             </Button>
+          </form>
+        </CardContent>
+      </Card>
+      {/* Mensagem do WhatsApp (Pós-venda) */}
+      <Card className="border-[#EBE8E3]" data-testid="wa-template-card">
+        <CardHeader>
+          <CardTitle className="font-heading text-lg text-[#2D2825] flex items-center gap-2">
+            <MessageCircle className="w-5 h-5 text-[#C97D63]" strokeWidth={1.5} />
+            Mensagem do WhatsApp de Pós-venda
+          </CardTitle>
+          <p className="text-sm text-[#7A726D]">
+            Personalize a saudação enviada quando você clica no ícone do WhatsApp na tela
+            de Pós-venda. Use os marcadores{" "}
+            <code className="bg-[#F2E4DF] px-1 py-0.5 rounded text-xs text-[#C97D63]">
+              {"{nome}"}
+            </code>{" "}
+            (nome completo) ou{" "}
+            <code className="bg-[#F2E4DF] px-1 py-0.5 rounded text-xs text-[#C97D63]">
+              {"{primeiro_nome}"}
+            </code>{" "}
+            para que a mensagem apareça personalizada.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submitWaTemplate} className="space-y-4">
+            <div>
+              <Label>Texto da mensagem *</Label>
+              <Textarea
+                data-testid="wa-template-input"
+                value={waTemplate}
+                onChange={(e) => setWaTemplate(e.target.value)}
+                rows={5}
+                maxLength={1000}
+                className="border-[#EBE8E3] mt-1 font-normal"
+                placeholder="Ex.: Oi, {primeiro_nome}! Aqui é da..."
+              />
+              <p className="text-[11px] text-[#7A726D] mt-1">
+                {waTemplate.length}/1000 caracteres
+              </p>
+            </div>
+
+            <div
+              className="rounded-xl border border-[#EBE8E3] bg-[#FBF6F2] px-4 py-3"
+              data-testid="wa-template-preview"
+            >
+              <p className="text-[11px] uppercase tracking-widest text-[#7A726D] mb-1">
+                Prévia (nome de exemplo: Maria Silva)
+              </p>
+              <p className="text-sm text-[#2D2825] whitespace-pre-wrap">
+                {renderTemplate(waTemplate, "Maria Silva")}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                type="submit"
+                disabled={waLoading || !waLoaded}
+                data-testid="wa-template-submit"
+                className="bg-[#C97D63] hover:bg-[#B36B53] text-white"
+              >
+                {waLoading ? "Salvando..." : "Salvar mensagem"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={resetWaTemplate}
+                data-testid="wa-template-reset"
+                className="border-[#EBE8E3] text-[#7A726D] hover:text-[#C97D63]"
+              >
+                <RotateCcw className="w-4 h-4 mr-1.5" strokeWidth={1.5} />
+                Restaurar padrão
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

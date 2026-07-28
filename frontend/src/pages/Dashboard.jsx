@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, formatBRL, formatDate } from "@/lib/api";
+import {
+  whatsappLink as buildWhatsAppLink,
+  digitsOnly,
+  DEFAULT_WHATSAPP_TEMPLATE,
+} from "@/lib/whatsapp";
 import { toast } from "sonner";
 import {
   TrendingUp,
@@ -66,28 +71,8 @@ function UrgencyBadge({ iso }) {
   );
 }
 
-// Strip non-digit chars from a phone string. Used for tel:/wa.me links.
-function digitsOnly(s) {
-  return (s || "").replace(/\D/g, "");
-}
-
-// Mensagem de follow-up de 45 dias com saudação personalizada.
-function buildWhatsAppMessage(name) {
-  const first = ((name || "").split(" ")[0] || "").trim();
-  const saudacao = first ? `Oi, ${first}!` : "Oi!";
-  return (
-    `${saudacao} Aqui é da Clínica Dra. Brinquinho. ` +
-    "Passando para saber como está a cicatrização do seu piercing feito há cerca de 45 dias. " +
-    "Está tudo bem? Alguma dúvida ou incômodo? Fico à disposição."
-  );
-}
-
-function whatsappLink(phone, name) {
-  const tel = digitsOnly(phone);
-  const full = tel.length === 11 ? "55" + tel : tel;
-  const text = encodeURIComponent(buildWhatsAppMessage(name));
-  return `https://wa.me/${full}?text=${text}`;
-}
+// Strip non-digit chars for tel: links (WA link comes from shared helper).
+// digitsOnly is imported from @/lib/whatsapp.
 
 const StatCard = ({ icon: Icon, label, value, hint, accent = "#C97D63", testid, onDelete, deleteTitle }) => (
   <div className="brinquinho-card p-6 relative" data-testid={testid}>
@@ -121,16 +106,19 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [waTemplate, setWaTemplate] = useState(DEFAULT_WHATSAPP_TEMPLATE);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [d, r] = await Promise.all([
+      const [d, r, s] = await Promise.all([
         api.get("/dashboard"),
         api.get("/reminders/pending"),
+        api.get("/settings"),
       ]);
       setData(d.data);
       setReminders(r.data);
+      if (s.data?.whatsapp_template) setWaTemplate(s.data.whatsapp_template);
     } finally {
       setLoading(false);
     }
@@ -139,6 +127,8 @@ export default function Dashboard() {
   useEffect(() => {
     load();
   }, []);
+
+  const waLink = (r) => buildWhatsAppLink(r.phone, r.patient_name, waTemplate);
 
   const markCalled = async (saleId) => {
     try {
@@ -346,7 +336,7 @@ export default function Dashboard() {
                           <Phone className="w-3.5 h-3.5" strokeWidth={1.5} />
                         </a>
                         <a
-                          href={whatsappLink(r.phone, r.patient_name)}
+                          href={waLink(r)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-1.5 rounded-lg bg-[#E5F1E0] text-[#5C7053]"
@@ -410,7 +400,7 @@ export default function Dashboard() {
                               <Phone className="w-3.5 h-3.5" strokeWidth={1.5} />
                             </a>
                             <a
-                              href={whatsappLink(r.phone, r.patient_name)}
+                              href={waLink(r)}
                               target="_blank"
                               rel="noopener noreferrer"
                               data-testid={`reminder-wa-${r.id}`}

@@ -859,9 +859,58 @@ async def toggle_installment_received(sale_id: str, installment_num: int, payloa
 
 
 # =====================
+# Settings (single-doc)
+# =====================
+DEFAULT_WHATSAPP_TEMPLATE = (
+    "Oi, {nome}! Aqui é da Clínica Dra. Brinquinho. "
+    "Passando para saber como está a cicatrização do seu piercing feito há cerca de 45 dias. "
+    "Está tudo bem? Alguma dúvida ou incômodo? Fico à disposição."
+)
+
+
+class Settings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    whatsapp_template: str = DEFAULT_WHATSAPP_TEMPLATE
+
+
+class SettingsUpdate(BaseModel):
+    whatsapp_template: str
+
+
+async def get_settings_doc() -> Dict[str, Any]:
+    doc = await db.settings.find_one({"_id": "app_settings"})
+    if not doc:
+        base = {"_id": "app_settings", "whatsapp_template": DEFAULT_WHATSAPP_TEMPLATE}
+        await db.settings.insert_one(base)
+        return base
+    return doc
+
+
+@api_router.get("/settings", response_model=Settings)
+async def read_settings():
+    doc = await get_settings_doc()
+    return Settings(whatsapp_template=doc.get("whatsapp_template") or DEFAULT_WHATSAPP_TEMPLATE)
+
+
+@api_router.put("/settings", response_model=Settings)
+async def update_settings(payload: SettingsUpdate):
+    template = (payload.whatsapp_template or "").strip()
+    if not template:
+        raise HTTPException(400, "A mensagem não pode ficar vazia.")
+    if len(template) > 1000:
+        raise HTTPException(400, "A mensagem é longa demais (máx. 1000 caracteres).")
+    await db.settings.update_one(
+        {"_id": "app_settings"},
+        {"$set": {"whatsapp_template": template}},
+        upsert=True,
+    )
+    return Settings(whatsapp_template=template)
+
+
+# =====================
 # Pós-venda (45 dias após cada venda)
 # =====================
-def _sale_to_post_sale(s: Dict[str, Any]) -> Dict[str, Any]:
+def _sale_to_post_sale(s: Dict[str, Any], sale_count: int = 1) -> Dict[str, Any]:
     """Shape a sale doc into the response the Pós-venda UI expects."""
     items = s.get("items") or []
     items_summary = ", ".join(
@@ -876,7 +925,28 @@ def _sale_to_post_sale(s: Dict[str, Any]) -> Dict[str, Any]:
         "post_sale_contacted": bool(s.get("post_sale_contacted", False)),
         "items_summary": items_summary,
         "gross_value": s.get("gross_value", 0),
+        "sale_count": sale_count,
     }
+
+
+def _client_key(s: Dict[str, Any]) -> str:
+    """Chave de agrupamento por cliente: telefone (só dígitos) ou nome normalizado."""
+    phone = "".join(ch for ch in (s.get("phone") or "") if ch.isdigit())
+    if phone:
+        return f"tel:{phone}"
+    name = (s.get("patient_name") or "").strip().lower()
+    return f"name:{name}" if name else ""
+
+
+async def _sale_counts_map() -> Dict[str, int]:
+    """Retorna {client_key: qtd total de vendas} varrendo todas as vendas."""
+    counts: Dict[str, int] = {}
+    async for s in db.sales.find({}, {"_id": 0, "patient_name": 1, "phone": 1}):
+        k = _client_key(s)
+        if not k:
+            continue
+        counts[k] = counts.get(k, 0) + 1
+    return counts
 
 
 @api_router.get("/reminders/pending")
@@ -888,7 +958,8 @@ async def pending_reminders():
         "post_sale_date": {"$gte": seven_ago, "$lte": in_14},
         "post_sale_contacted": {"$ne": True},
     }, {"_id": 0}).sort("post_sale_date", 1).to_list(500)
-    return [_sale_to_post_sale(s) for s in items]
+    counts = await _sale_counts_map()
+    return [_sale_to_post_sale(s, counts.get(_client_key(s), 1)) for s in items]
 
 
 @api_router.get("/post-sale")
@@ -914,7 +985,8 @@ async def list_post_sale(status: Optional[str] = Query(None)):
     items = await db.sales.find(query, {"_id": 0}).sort(
         "post_sale_date", -1
     ).to_list(2000)
-    return [_sale_to_post_sale(s) for s in items]
+    counts = await _sale_counts_map()
+    return [_sale_to_post_sale(s, counts.get(_client_key(s), 1)) for s in items]
 
 
 @api_router.post("/sales/{sale_id}/mark-called")
