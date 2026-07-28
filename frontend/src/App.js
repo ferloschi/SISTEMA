@@ -7,8 +7,6 @@ import Login from "@/pages/Login";
 import Layout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Estoque from "@/pages/Estoque";
-import Agendamento from "@/pages/Agendamento";
-import Pacientes from "@/pages/Prontuarios";
 import Vendas from "@/pages/Vendas";
 import Gestao from "@/pages/Gestao";
 import GestaoFinanceira from "@/pages/GestaoFinanceira";
@@ -37,16 +35,17 @@ function App() {
               <Route path="/estoque" element={<Estoque />} />
               <Route path="/insumos" element={<Insumos />} />
               <Route path="/precificacao" element={<Precificacao />} />
-              <Route path="/agendamento" element={<Agendamento />} />
-              <Route path="/pacientes" element={<Pacientes />} />
-              <Route path="/prontuarios" element={<Pacientes />} />
-              <Route path="/prontuario" element={<Pacientes />} />
               <Route path="/vendas" element={<Vendas />} />
               <Route path="/gestao" element={<Gestao />} />
               <Route path="/financeiro" element={<GestaoFinanceira />} />
               <Route path="/etiquetas" element={<Etiquetas />} />
               <Route path="/pos-venda" element={<PosVenda />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
+              {/* Legacy Prontuário routes redirect to Vendas */}
+              <Route path="/prontuario" element={<Navigate to="/vendas" replace />} />
+              <Route path="/prontuarios" element={<Navigate to="/vendas" replace />} />
+              <Route path="/pacientes" element={<Navigate to="/vendas" replace />} />
+              <Route path="/agendamento" element={<Navigate to="/vendas" replace />} />
             </Route>
           </Routes>
         </AuthProvider>

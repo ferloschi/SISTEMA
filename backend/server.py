@@ -200,6 +200,7 @@ class Sale(BaseModel):
     patient_id: Optional[str] = ""
     patient_name: Optional[str] = ""
     child_name: Optional[str] = ""
+    phone: Optional[str] = ""
     items: List[SaleItem] = []
     description: Optional[str] = ""
     gross_value: float = 0.0
@@ -224,6 +225,7 @@ class SaleCreate(BaseModel):
     patient_id: Optional[str] = ""
     patient_name: Optional[str] = ""
     child_name: Optional[str] = ""
+    phone: Optional[str] = ""
     items: List[SaleItem] = []
     description: Optional[str] = ""
     payment_method_id: Optional[str] = ""
@@ -824,6 +826,7 @@ async def compute_sale(payload: SaleCreate) -> Sale:
             patient_id=payload.patient_id or "",
             patient_name=payload.patient_name or "",
             child_name=payload.child_name or "",
+            phone=payload.phone or "",
             items=items,
             description=payload.description or "",
             gross_value=round(gross, 2),
@@ -884,6 +887,7 @@ async def compute_sale(payload: SaleCreate) -> Sale:
         patient_id=payload.patient_id or "",
         patient_name=payload.patient_name or "",
         child_name=payload.child_name or "",
+        phone=payload.phone or "",
         items=items,
         description=payload.description or "",
         gross_value=round(gross, 2),

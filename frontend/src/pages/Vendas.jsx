@@ -24,23 +24,29 @@ import { Plus, Trash2, X } from "lucide-react";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-const emptyItem = { product_id: "", name: "", qty: 1, unit_price: 0, unit_cost: 0 };
+const emptyItem = {
+  product_id: "",
+  variant_id: "",
+  name: "",
+  qty: 1,
+  unit_price: 0,
+  unit_cost: 0,
+};
 
 const emptyForm = {
   sale_date: todayISO(),
-  patient_id: "",
   patient_name: "",
-  child_name: "",
+  phone: "",
   items: [{ ...emptyItem }],
   description: "",
   payment_method_id: "",
+  installments: 1,
   card_fee_pct: "",
 };
 
 export default function Vendas() {
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
-  const [patients, setPatients] = useState([]);
   const [methods, setMethods] = useState([]);
   const [procedures, setProcedures] = useState([]);
   const [open, setOpen] = useState(false);
@@ -48,16 +54,14 @@ export default function Vendas() {
   const [monthFilter, setMonthFilter] = useState(todayISO().slice(0, 7));
 
   const load = async () => {
-    const [s, p, pat, pm, pr] = await Promise.all([
+    const [s, p, pm, pr] = await Promise.all([
       api.get("/sales", { params: { month: monthFilter || undefined } }),
       api.get("/products"),
-      api.get("/patients"),
       api.get("/payment-methods"),
       api.get("/procedures"),
     ]);
     setSales(s.data);
     setProducts(p.data);
-    setPatients(pat.data);
     setMethods(pm.data);
     setProcedures(pr.data);
   };
@@ -98,31 +102,41 @@ export default function Vendas() {
 
   const pickProduct = (idx, productId) => {
     const pr = products.find((p) => p.id === productId);
-    if (pr) {
-      setForm((f) => {
-        const items = [...f.items];
-        items[idx] = {
-          ...items[idx],
-          product_id: pr.id,
-          name: pr.name,
-          unit_price: pr.sale_value,
-          unit_cost: pr.purchase_value,
-        };
-        return { ...f, items };
-      });
-    }
+    if (!pr) return;
+    // Auto-pick the first variant if it's the only one; otherwise leave empty
+    const onlyVariant =
+      pr.variants && pr.variants.length === 1 ? pr.variants[0] : null;
+    setForm((f) => {
+      const items = [...f.items];
+      items[idx] = {
+        ...items[idx],
+        product_id: pr.id,
+        variant_id: onlyVariant ? onlyVariant.id : "",
+        name: pr.name,
+        unit_price: onlyVariant ? onlyVariant.sale_value : pr.sale_value,
+        unit_cost: onlyVariant ? onlyVariant.purchase_value : pr.purchase_value,
+      };
+      return { ...f, items };
+    });
   };
 
-  const pickPatient = (id) => {
-    const pt = patients.find((p) => p.id === id);
-    if (pt) {
-      setForm((f) => ({
-        ...f,
-        patient_id: pt.id,
-        patient_name: pt.parent_name,
-        child_name: pt.child_name || "",
-      }));
-    }
+  const pickVariant = (idx, variantId) => {
+    setForm((f) => {
+      const items = [...f.items];
+      const pr = products.find((p) => p.id === items[idx].product_id);
+      const v = pr?.variants?.find((x) => x.id === variantId);
+      if (v) {
+        const label = [v.color, v.material].filter(Boolean).join(" / ");
+        items[idx] = {
+          ...items[idx],
+          variant_id: v.id,
+          name: label ? `${pr.name} — ${label}` : pr.name,
+          unit_price: v.sale_value,
+          unit_cost: v.purchase_value,
+        };
+      }
+      return { ...f, items };
+    });
   };
 
   const pickProcedure = (id) => {
@@ -297,33 +311,22 @@ export default function Vendas() {
                     data-testid="form-sale-date"
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <Label>Paciente</Label>
-                  <Select onValueChange={pickPatient}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="— Selecionar (opcional) —" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {patients.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.parent_name} {p.child_name ? `· ${p.child_name}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div>
-                  <Label>Nome do cliente</Label>
+                  <Label>Nome do paciente *</Label>
                   <Input
                     value={form.patient_name}
                     onChange={(e) => setForm({ ...form, patient_name: e.target.value })}
+                    placeholder="Nome completo"
+                    data-testid="form-patient-name"
                   />
                 </div>
                 <div>
-                  <Label>Nome da criança</Label>
+                  <Label>Contato (telefone)</Label>
                   <Input
-                    value={form.child_name}
-                    onChange={(e) => setForm({ ...form, child_name: e.target.value })}
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    placeholder="(11) 99999-9999"
+                    data-testid="form-phone"
                   />
                 </div>
                 <div>
@@ -346,24 +349,48 @@ export default function Vendas() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label>Taxa do cartão (%) — editável</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="Ex: 3.99"
-                    value={form.card_fee_pct}
-                    onChange={(e) =>
-                      setForm({ ...form, card_fee_pct: e.target.value })
-                    }
-                    data-testid="form-card-fee-pct"
-                  />
-                  <p className="text-[11px] text-[#7A726D] mt-1">
-                    Preenchido com a taxa padrão da forma escolhida — ajuste se essa venda
-                    teve taxa diferente.
-                  </p>
-                </div>
+                {(() => {
+                  const pm = methods.find((m) => m.id === form.payment_method_id);
+                  const isCard =
+                    pm && (pm.is_card || /crédito|credito/i.test(pm.name || ""));
+                  if (!isCard) return null;
+                  return (
+                    <>
+                      <div>
+                        <Label>Parcelas</Label>
+                        <Select
+                          value={String(form.installments || 1)}
+                          onValueChange={(v) =>
+                            setForm({ ...form, installments: parseInt(v) || 1 })
+                          }
+                        >
+                          <SelectTrigger data-testid="form-installments">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1× à vista</SelectItem>
+                            <SelectItem value="2">2×</SelectItem>
+                            <SelectItem value="3">3×</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Taxa do cartão (%) — editável</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Ex: 3.99"
+                          value={form.card_fee_pct}
+                          onChange={(e) =>
+                            setForm({ ...form, card_fee_pct: e.target.value })
+                          }
+                          data-testid="form-card-fee-pct"
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="p-3 rounded-xl bg-[#F2E4DF]/30 border border-dashed border-[#E8CFC1]">
@@ -409,7 +436,7 @@ export default function Vendas() {
                       key={idx}
                       className="grid grid-cols-12 gap-2 items-end p-3 rounded-xl bg-[#FDFDF9] border border-[#EBE8E3]"
                     >
-                      <div className="col-span-12 md:col-span-4">
+                      <div className="col-span-12 md:col-span-3">
                         <Label className="text-xs">Produto (opcional)</Label>
                         <Select
                           value={it.product_id || ""}
@@ -421,13 +448,42 @@ export default function Vendas() {
                           <SelectContent>
                             {products.map((p) => (
                               <SelectItem key={p.id} value={p.id}>
-                                {p.name} ({formatBRL(p.sale_value)})
+                                {p.name}
+                                {p.variants?.length > 1
+                                  ? ` (${p.variants.length} variantes)`
+                                  : ` (${formatBRL(p.sale_value)})`}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="col-span-12 md:col-span-3">
+                      {(() => {
+                        const pr = products.find((p) => p.id === it.product_id);
+                        if (!pr || !pr.variants || pr.variants.length <= 1) return null;
+                        return (
+                          <div className="col-span-12 md:col-span-2">
+                            <Label className="text-xs text-[#C97D63]">Variante *</Label>
+                            <Select
+                              value={it.variant_id || ""}
+                              onValueChange={(v) => pickVariant(idx, v)}
+                            >
+                              <SelectTrigger data-testid={`form-variant-${idx}`}>
+                                <SelectValue placeholder="Selecionar" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {pr.variants.map((v) => (
+                                  <SelectItem key={v.id} value={v.id}>
+                                    {[v.color, v.material].filter(Boolean).join(" / ") ||
+                                      "sem detalhes"}{" "}
+                                    · {formatBRL(v.sale_value)} · est. {v.stock_qty}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })()}
+                      <div className="col-span-12 md:col-span-2">
                         <Label className="text-xs">Descrição</Label>
                         <Input
                           value={it.name}
@@ -569,8 +625,8 @@ export default function Vendas() {
                   <td className="py-3 px-4">{formatDate(s.sale_date)}</td>
                   <td className="py-3 px-4">
                     <div className="font-medium">{s.patient_name || "—"}</div>
-                    {s.child_name && (
-                      <div className="text-xs text-[#7A726D]">{s.child_name}</div>
+                    {s.phone && (
+                      <div className="text-xs text-[#7A726D]">{s.phone}</div>
                     )}
                   </td>
                   <td className="py-3 px-4 text-[#7A726D]">
