@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   TrendingUp,
   DollarSign,
-  Calendar,
+  ShoppingBag,
   Bell,
   AlertTriangle,
   PiggyBank,
@@ -122,11 +122,11 @@ export default function Dashboard() {
     load();
   }, []);
 
-  const markCalled = async (apptId) => {
+  const markCalled = async (saleId) => {
     try {
-      await api.post(`/appointments/${apptId}/mark-called`);
-      toast.success("Paciente marcado como contatado");
-      setReminders((prev) => prev.filter((r) => r.id !== apptId));
+      await api.post(`/sales/${saleId}/mark-called`);
+      toast.success("Cliente marcada como contatada");
+      setReminders((prev) => prev.filter((r) => r.id !== saleId));
     } catch (err) {
       toast.error("Erro ao atualizar status");
     }
@@ -184,12 +184,12 @@ export default function Dashboard() {
           deleteTitle={`Excluir todas as vendas de ${data.month}`}
         />
         <StatCard
-          icon={Calendar}
-          label="Agendamentos hoje"
-          value={data.today_appointments}
+          icon={ShoppingBag}
+          label="Vendas de hoje"
+          value={data.today_sales}
           hint={formatDate(data.today)}
           accent="#DDA15E"
-          testid="stat-today-appts"
+          testid="stat-today-sales"
         />
         <StatCard
           icon={Bell}
@@ -290,7 +290,7 @@ export default function Dashboard() {
           Lembretes de pós-venda pendentes
         </h3>
         <p className="text-xs text-[#7A726D] mb-4">
-          Pacientes com 45 dias de pós-perfuração — ligue para acompanhar a cicatrização.
+          Clientes com 45 dias após a venda — ligue para acompanhar.
         </p>
         {reminders.length === 0 ? (
           <p className="text-sm text-[#7A726D]">Nenhum lembrete pendente nos próximos dias.</p>
@@ -299,7 +299,7 @@ export default function Dashboard() {
             {/* Mobile cards */}
             <div className="md:hidden space-y-3">
               {reminders.map((r) => {
-                const tel = digitsOnly(r.patient_phone);
+                const tel = digitsOnly(r.phone);
                 return (
                   <div
                     key={r.id}
@@ -308,20 +308,19 @@ export default function Dashboard() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="font-medium text-[#2D2825] truncate">{r.patient_name}</p>
-                        {r.child_name && (
-                          <p className="text-xs text-[#7A726D] truncate">{r.child_name}</p>
+                        <p className="font-medium text-[#2D2825] truncate">{r.patient_name || "—"}</p>
+                        {r.items_summary && (
+                          <p className="text-xs text-[#7A726D] line-clamp-2">{r.items_summary}</p>
                         )}
                       </div>
                       <UrgencyBadge iso={r.post_sale_date} />
                     </div>
-                    <p className="text-sm text-[#2D2825]">{r.procedure_type}</p>
                     <p className="text-xs font-medium text-[#C97D63]">
                       Pós-venda: {formatDate(r.post_sale_date)}
                     </p>
-                    {r.patient_phone && (
+                    {r.phone && (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-[#2D2825] truncate">{r.patient_phone}</span>
+                        <span className="text-sm text-[#2D2825] truncate">{r.phone}</span>
                         <a
                           href={`tel:${tel}`}
                           className="p-1.5 rounded-lg bg-[#F2E4DF] text-[#C97D63]"
@@ -356,9 +355,8 @@ export default function Dashboard() {
               <thead>
                 <tr className="bg-[#FDFDF9] border-y border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
                   <th className="py-3 px-4 text-left">Quando</th>
-                  <th className="py-3 px-4 text-left">Paciente</th>
-                  <th className="py-3 px-4 text-left">Criança</th>
-                  <th className="py-3 px-4 text-left">Procedimento</th>
+                  <th className="py-3 px-4 text-left">Cliente</th>
+                  <th className="py-3 px-4 text-left">Itens da venda</th>
                   <th className="py-3 px-4 text-left">Telefone</th>
                   <th className="py-3 px-4 text-left">Data pós-venda</th>
                   <th className="py-3 px-4 text-right">Ação</th>
@@ -366,7 +364,7 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {reminders.map((r) => {
-                  const tel = digitsOnly(r.patient_phone);
+                  const tel = digitsOnly(r.phone);
                   return (
                     <tr
                       key={r.id}
@@ -376,13 +374,14 @@ export default function Dashboard() {
                       <td className="py-3 px-4">
                         <UrgencyBadge iso={r.post_sale_date} />
                       </td>
-                      <td className="py-3 px-4">{r.patient_name}</td>
-                      <td className="py-3 px-4 text-[#7A726D]">{r.child_name || "—"}</td>
-                      <td className="py-3 px-4">{r.procedure_type}</td>
+                      <td className="py-3 px-4">{r.patient_name || "—"}</td>
+                      <td className="py-3 px-4 text-[#7A726D] max-w-xs truncate">
+                        {r.items_summary || "—"}
+                      </td>
                       <td className="py-3 px-4">
-                        {r.patient_phone ? (
+                        {r.phone ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-[#2D2825]">{r.patient_phone}</span>
+                            <span className="text-[#2D2825]">{r.phone}</span>
                             <a
                               href={`tel:${tel}`}
                               data-testid={`reminder-tel-${r.id}`}

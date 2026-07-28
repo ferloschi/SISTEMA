@@ -39,7 +39,6 @@ const pageTitle = {
   "/precificacao": "Precificação de Procedimentos",
   "/vendas": "Vendas",
   "/pos-venda": "Acompanhamento Pós-venda",
-  "/agendamento": "Agendamento",
   "/gestao": "Gestão Administrativa",
   "/financeiro": "Gestão Financeira",
   "/configuracoes": "Configurações",

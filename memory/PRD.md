@@ -48,23 +48,36 @@
 - ✅ Seleção múltipla com quantidade por produto e contador total
 - ✅ Pré-visualização em tela e CSS `@media print` com `@page size: 95mm 12mm` para rolo contínuo
 
+### Iteração 4 (2026-07-28) — Simplificação: remoção de Prontuário
+- ✅ Removidas coleções `patients` e `appointments` e todos os endpoints associados
+- ✅ Página Prontuário substituída por **Vendas simplificada** (nome, telefone, data, itens, pagamento)
+- ✅ Rotas legacy (`/prontuario`, `/pacientes`, `/agendamento`) redirecionam para `/vendas`
+- ✅ **Pós-venda re-cabeada às Vendas**: cada venda gera automaticamente `post_sale_date = sale_date + 45 dias` e um flag `post_sale_contacted`
+- ✅ Endpoints novos: `POST /api/sales/{id}/mark-called`, `POST /api/sales/{id}/mark-pending`
+- ✅ Endpoints atualizados: `GET /api/post-sale?status=pendente|contatado|atrasado|all` e `GET /api/reminders/pending` leem de `sales`
+- ✅ Dashboard: card "Vendas de hoje" (substitui "Agendamentos hoje"), lembretes vindos de vendas
+- ✅ Gestão Administrativa: removida aba "Procedimentos Realizados" (dependia de appointments)
+- ✅ Backfill de `post_sale_date`/`post_sale_contacted` em vendas antigas no startup
+
 ## Prioritized Backlog (P0 / P1 / P2)
 ### P0 — Pendente confirmação do usuário
 - Envio real de lembretes (Email via Resend ou WhatsApp via Twilio) — aguardando chaves
 
 ### P1
 - Pré-carregar produtos da planilha Excel (CAIXINHA, ALGODÃO, GAZE, BRINCO, etc.) com seed opcional
-- Histórico de agendamentos por paciente (timeline)
 - Validação de estoque negativo ao registrar venda
 - Exportação CSV/PDF de relatórios mensais
+- Vendas.jsx não envia `variant_id` no payload — corrigir para que o estoque decrementado seja da variante correta
 
 ### P2
 - Multi-usuário com permissões (recepcionista vs admin)
 - Push notifications no navegador
 - Backup automático do MongoDB
 - Marca d'água/branding personalizado em comprovantes
+- Refatorar `server.py` em módulos (routes/models/services)
 
 ## Next Tasks
-1. Aguardar feedback do usuário após primeiro uso
+1. Aguardar feedback do usuário após primeiro uso da Pós-venda migrada
 2. Coletar chaves de integração (Resend/Twilio) quando o usuário desejar ativar lembretes
-3. Implementar seed dos itens da planilha caso solicitado
+3. Corrigir envio de `variant_id` em vendas
+

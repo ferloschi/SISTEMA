@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, formatDate } from "@/lib/api";
+import { api, formatDate, formatBRL } from "@/lib/api";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,6 @@ import {
   RotateCcw,
   Search,
   HeartPulse,
-  Trash2,
 } from "lucide-react";
 
 const TABS = [
@@ -29,9 +28,9 @@ function daysUntil(iso) {
   return Math.round((target - today) / (1000 * 60 * 60 * 24));
 }
 
-function UrgencyBadge({ iso, status }) {
+function UrgencyBadge({ iso, contacted }) {
   const d = daysUntil(iso);
-  if (status === "contatado") {
+  if (contacted) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border bg-[#E5F1E0] text-[#5C7053] border-[#C7DBBE]">
         Contatado
@@ -108,15 +107,14 @@ export default function PosVenda() {
     return items.filter(
       (r) =>
         (r.patient_name || "").toLowerCase().includes(q) ||
-        (r.child_name || "").toLowerCase().includes(q) ||
-        (r.patient_phone || "").toLowerCase().includes(q) ||
-        (r.procedure_type || "").toLowerCase().includes(q)
+        (r.phone || "").toLowerCase().includes(q) ||
+        (r.items_summary || "").toLowerCase().includes(q)
     );
   }, [items, search]);
 
   const markCalled = async (id) => {
     try {
-      await api.post(`/appointments/${id}/mark-called`);
+      await api.post(`/sales/${id}/mark-called`);
       toast.success("Marcado como contatado");
       load();
     } catch {
@@ -126,29 +124,11 @@ export default function PosVenda() {
 
   const markPending = async (id) => {
     try {
-      await api.post(`/appointments/${id}/mark-pending`);
+      await api.post(`/sales/${id}/mark-pending`);
       toast.success("Voltou para pendente");
       load();
     } catch {
       toast.error("Erro ao atualizar");
-    }
-  };
-
-  const remove = async (r) => {
-    if (
-      !window.confirm(
-        `Excluir o registro de pós-venda de "${r.patient_name}"?\n\n` +
-          `O agendamento da perfuração também será removido da Gestão Administrativa.\n` +
-          `Esta ação não pode ser desfeita.`
-      )
-    )
-      return;
-    try {
-      await api.delete(`/appointments/${r.id}`);
-      toast.success("Registro excluído");
-      load();
-    } catch {
-      toast.error("Erro ao excluir");
     }
   };
 
@@ -163,14 +143,14 @@ export default function PosVenda() {
                 Acompanhamento Pós-venda
               </CardTitle>
               <p className="text-sm text-[#7A726D] mt-1">
-                Histórico completo dos lembretes de 45 dias após cada perfuração.
+                Lembretes de 45 dias após cada venda para acompanhar a cliente.
               </p>
             </div>
             <div className="relative w-full md:w-72">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#7A726D]" />
               <Input
                 data-testid="posventa-search"
-                placeholder="Buscar paciente, criança, telefone..."
+                placeholder="Buscar cliente, telefone, item..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 border-[#EBE8E3]"
@@ -221,7 +201,7 @@ export default function PosVenda() {
               {/* Mobile cards */}
               <div className="md:hidden space-y-3">
                 {filtered.map((r) => {
-                  const tel = digitsOnly(r.patient_phone);
+                  const tel = digitsOnly(r.phone);
                   return (
                     <div
                       key={r.id}
@@ -231,27 +211,26 @@ export default function PosVenda() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-medium text-[#2D2825] truncate">
-                            {r.patient_name}
+                            {r.patient_name || "—"}
                           </p>
-                          {r.child_name && (
-                            <p className="text-xs text-[#7A726D] truncate">
-                              Criança: {r.child_name}
+                          {r.items_summary && (
+                            <p className="text-xs text-[#7A726D] line-clamp-2">
+                              {r.items_summary}
                             </p>
                           )}
                         </div>
-                        <UrgencyBadge iso={r.post_sale_date} status={r.reminder_status} />
+                        <UrgencyBadge iso={r.post_sale_date} contacted={r.post_sale_contacted} />
                       </div>
-                      <p className="text-sm text-[#2D2825]">{r.procedure_type}</p>
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-[#7A726D]">Perfuração: {formatDate(r.date)}</span>
+                        <span className="text-[#7A726D]">Venda: {formatDate(r.sale_date)}</span>
                         <span className="font-medium text-[#C97D63]">
                           Pós: {formatDate(r.post_sale_date)}
                         </span>
                       </div>
-                      {r.patient_phone && (
+                      {r.phone && (
                         <div className="flex items-center gap-2 pt-1">
                           <span className="text-sm text-[#2D2825] truncate">
-                            {r.patient_phone}
+                            {r.phone}
                           </span>
                           <a
                             href={`tel:${tel}`}
@@ -272,7 +251,7 @@ export default function PosVenda() {
                         </div>
                       )}
                       <div className="flex items-center gap-2 pt-2 border-t border-[#EBE8E3]">
-                        {r.reminder_status === "contatado" ? (
+                        {r.post_sale_contacted ? (
                           <Button
                             variant="outline"
                             size="sm"
@@ -291,13 +270,6 @@ export default function PosVenda() {
                             Já liguei
                           </button>
                         )}
-                        <button
-                          onClick={() => remove(r)}
-                          title="Excluir"
-                          className="p-2 rounded-lg border border-[#EBE8E3] text-[#7A726D] hover:text-[#D06B6B] hover:bg-[#FBE7E7]"
-                        >
-                          <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                        </button>
                       </div>
                     </div>
                   );
@@ -310,18 +282,18 @@ export default function PosVenda() {
                 <thead>
                   <tr className="bg-[#FDFDF9] border-y border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
                     <th className="py-3 px-4 text-left">Status</th>
-                    <th className="py-3 px-4 text-left">Paciente</th>
-                    <th className="py-3 px-4 text-left">Criança</th>
-                    <th className="py-3 px-4 text-left">Procedimento</th>
+                    <th className="py-3 px-4 text-left">Cliente</th>
+                    <th className="py-3 px-4 text-left">Itens da venda</th>
                     <th className="py-3 px-4 text-left">Telefone</th>
-                    <th className="py-3 px-4 text-left">Perfuração</th>
+                    <th className="py-3 px-4 text-left">Data venda</th>
                     <th className="py-3 px-4 text-left">Pós-venda</th>
+                    <th className="py-3 px-4 text-right">Valor</th>
                     <th className="py-3 px-4 text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((r) => {
-                    const tel = digitsOnly(r.patient_phone);
+                    const tel = digitsOnly(r.phone);
                     return (
                       <tr
                         key={r.id}
@@ -329,17 +301,18 @@ export default function PosVenda() {
                         data-testid={`posventa-row-${r.id}`}
                       >
                         <td className="py-3 px-4">
-                          <UrgencyBadge iso={r.post_sale_date} status={r.reminder_status} />
+                          <UrgencyBadge iso={r.post_sale_date} contacted={r.post_sale_contacted} />
                         </td>
                         <td className="py-3 px-4 font-medium text-[#2D2825]">
-                          {r.patient_name}
+                          {r.patient_name || "—"}
                         </td>
-                        <td className="py-3 px-4 text-[#7A726D]">{r.child_name || "—"}</td>
-                        <td className="py-3 px-4">{r.procedure_type}</td>
+                        <td className="py-3 px-4 text-[#7A726D] max-w-xs truncate">
+                          {r.items_summary || "—"}
+                        </td>
                         <td className="py-3 px-4">
-                          {r.patient_phone ? (
+                          {r.phone ? (
                             <div className="flex items-center gap-2">
-                              <span className="text-[#2D2825]">{r.patient_phone}</span>
+                              <span className="text-[#2D2825]">{r.phone}</span>
                               <a
                                 href={`tel:${tel}`}
                                 title="Ligar"
@@ -363,13 +336,16 @@ export default function PosVenda() {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-[#7A726D]">{formatDate(r.date)}</td>
+                        <td className="py-3 px-4 text-[#7A726D]">{formatDate(r.sale_date)}</td>
                         <td className="py-3 px-4 font-medium text-[#C97D63]">
                           {formatDate(r.post_sale_date)}
                         </td>
+                        <td className="py-3 px-4 text-right text-[#2D2825]">
+                          {formatBRL(r.gross_value || 0)}
+                        </td>
                         <td className="py-3 px-4 text-right">
                           <div className="inline-flex items-center justify-end gap-2">
-                            {r.reminder_status === "contatado" ? (
+                            {r.post_sale_contacted ? (
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -390,14 +366,6 @@ export default function PosVenda() {
                                 Já liguei
                               </button>
                             )}
-                            <button
-                              onClick={() => remove(r)}
-                              data-testid={`posventa-delete-${r.id}`}
-                              title="Excluir registro"
-                              className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
-                            >
-                              <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                            </button>
                           </div>
                         </td>
                       </tr>

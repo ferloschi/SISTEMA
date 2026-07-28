@@ -106,31 +106,6 @@ class ProductCreate(BaseModel):
     min_stock: int = 0
 
 
-class Patient(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    child_name: Optional[str] = ""
-    parent_name: str
-    phone: Optional[str] = ""
-    email: Optional[str] = ""
-    birth_date: Optional[str] = ""
-    comorbidades: Optional[str] = ""
-    anamnese: Optional[Dict[str, Any]] = {}
-    notes: Optional[str] = ""
-    created_at: str = Field(default_factory=now_utc_iso)
-
-
-class PatientCreate(BaseModel):
-    child_name: Optional[str] = ""
-    parent_name: str
-    phone: Optional[str] = ""
-    email: Optional[str] = ""
-    birth_date: Optional[str] = ""
-    comorbidades: Optional[str] = ""
-    anamnese: Optional[Dict[str, Any]] = {}
-    notes: Optional[str] = ""
-
-
 class Insumo(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -143,33 +118,6 @@ class Insumo(BaseModel):
 class InsumoCreate(BaseModel):
     name: str
     purchase_value: float = 0.0
-    notes: Optional[str] = ""
-
-
-class Appointment(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    patient_id: Optional[str] = ""
-    patient_name: str  # who comes (parent or adult)
-    child_name: Optional[str] = ""
-    procedure_type: str  # perfuração baby / piercing / lobuloplastia / laser / laserterapia
-    date: str  # YYYY-MM-DD
-    time: str  # HH:MM
-    status: str = "agendado"  # agendado, realizado, cancelado
-    notes: Optional[str] = ""
-    post_sale_date: Optional[str] = ""  # auto +45 days from date
-    reminder_status: str = "pendente"  # pendente, contatado, enviado
-    created_at: str = Field(default_factory=now_utc_iso)
-
-
-class AppointmentCreate(BaseModel):
-    patient_id: Optional[str] = ""
-    patient_name: str
-    child_name: Optional[str] = ""
-    procedure_type: str
-    date: str
-    time: str
-    status: Optional[str] = "agendado"
     notes: Optional[str] = ""
 
 
@@ -197,9 +145,7 @@ class Sale(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     sale_date: str  # YYYY-MM-DD
-    patient_id: Optional[str] = ""
     patient_name: Optional[str] = ""
-    child_name: Optional[str] = ""
     phone: Optional[str] = ""
     items: List[SaleItem] = []
     description: Optional[str] = ""
@@ -215,16 +161,15 @@ class Sale(BaseModel):
     receive_schedule: List[dict] = []
     payments: List[PaymentEntry] = []  # mixed payments (if more than one method)
     receive_date: Optional[str] = ""
+    # Pós-venda: 45 dias após a data da venda, para follow-up
     post_sale_date: Optional[str] = ""
-    appointment_id: Optional[str] = ""
+    post_sale_contacted: bool = False
     created_at: str = Field(default_factory=now_utc_iso)
 
 
 class SaleCreate(BaseModel):
     sale_date: str
-    patient_id: Optional[str] = ""
     patient_name: Optional[str] = ""
-    child_name: Optional[str] = ""
     phone: Optional[str] = ""
     items: List[SaleItem] = []
     description: Optional[str] = ""
@@ -232,7 +177,6 @@ class SaleCreate(BaseModel):
     card_fee_pct: Optional[float] = None
     installments: Optional[int] = 1
     payments: Optional[List[Dict[str, Any]]] = None
-    appointment_id: Optional[str] = ""
 
 
 class ProcedureItem(BaseModel):
@@ -302,6 +246,15 @@ async def ensure_default_payment_methods():
         for d in defaults:
             pm = PaymentMethod(**d)
             await db.payment_methods.insert_one(pm.model_dump())
+
+
+def compute_post_sale_date(d: str) -> str:
+    """Data de follow-up: 45 dias após a data informada (YYYY-MM-DD)."""
+    try:
+        dt = datetime.strptime(d, "%Y-%m-%d").date()
+        return (dt + timedelta(days=45)).isoformat()
+    except Exception:
+        return ""
 
 
 # =====================
@@ -505,129 +458,6 @@ async def delete_product(product_id: str):
 
 
 # =====================
-# Patients
-# =====================
-@api_router.get("/patients", response_model=List[Patient])
-async def list_patients(q: Optional[str] = None):
-    query = {}
-    if q:
-        query = {"$or": [
-            {"parent_name": {"$regex": q, "$options": "i"}},
-            {"child_name": {"$regex": q, "$options": "i"}},
-            {"phone": {"$regex": q, "$options": "i"}},
-        ]}
-    items = await db.patients.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
-    return items
-
-
-@api_router.post("/patients", response_model=Patient)
-async def create_patient(payload: PatientCreate):
-    pt = Patient(**payload.model_dump())
-    await db.patients.insert_one(pt.model_dump())
-    return pt
-
-
-@api_router.put("/patients/{patient_id}", response_model=Patient)
-async def update_patient(patient_id: str, payload: PatientCreate):
-    existing = await db.patients.find_one({"id": patient_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(404, "Paciente não encontrado")
-    data = payload.model_dump()
-    existing.update(data)
-    await db.patients.update_one({"id": patient_id}, {"$set": data})
-    return Patient(**existing)
-
-
-@api_router.delete("/patients/{patient_id}")
-async def delete_patient(patient_id: str):
-    existing = await db.patients.find_one({"id": patient_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(404, "Paciente não encontrado")
-
-    # Cascade: find all sales of this patient and restore product stock first
-    sales_cursor = db.sales.find({"patient_id": patient_id}, {"_id": 0})
-    async for sale in sales_cursor:
-        for it in sale.get("items", []):
-            if it.get("product_id"):
-                await _increment_variant_stock(
-                    it["product_id"],
-                    it.get("variant_id"),
-                    int(it.get("qty", 0)),
-                )
-
-    sales_res = await db.sales.delete_many({"patient_id": patient_id})
-    appts_res = await db.appointments.delete_many({"patient_id": patient_id})
-    await db.patients.delete_one({"id": patient_id})
-
-    return {
-        "ok": True,
-        "deleted_sales": sales_res.deleted_count,
-        "deleted_appointments": appts_res.deleted_count,
-    }
-
-
-# =====================
-# Appointments
-# =====================
-def compute_post_sale_date(d: str) -> str:
-    try:
-        dt = datetime.strptime(d, "%Y-%m-%d").date()
-        return (dt + timedelta(days=45)).isoformat()
-    except Exception:
-        return ""
-
-
-@api_router.get("/appointments", response_model=List[Appointment])
-async def list_appointments(date_from: Optional[str] = None, date_to: Optional[str] = None):
-    query = {}
-    if date_from or date_to:
-        query["date"] = {}
-        if date_from:
-            query["date"]["$gte"] = date_from
-        if date_to:
-            query["date"]["$lte"] = date_to
-    items = await db.appointments.find(query, {"_id": 0}).sort([("date", 1), ("time", 1)]).to_list(5000)
-    return items
-
-
-@api_router.post("/appointments", response_model=Appointment)
-async def create_appointment(payload: AppointmentCreate):
-    data = payload.model_dump()
-    appt = Appointment(**data)
-    appt.post_sale_date = compute_post_sale_date(appt.date)
-    await db.appointments.insert_one(appt.model_dump())
-    return appt
-
-
-@api_router.put("/appointments/{appt_id}", response_model=Appointment)
-async def update_appointment(appt_id: str, payload: AppointmentCreate):
-    existing = await db.appointments.find_one({"id": appt_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(404, "Agendamento não encontrado")
-    data = payload.model_dump()
-    data["post_sale_date"] = compute_post_sale_date(data["date"])
-    existing.update(data)
-    await db.appointments.update_one({"id": appt_id}, {"$set": data})
-    return Appointment(**existing)
-
-
-@api_router.delete("/appointments/{appt_id}")
-async def delete_appointment(appt_id: str):
-    res = await db.appointments.delete_one({"id": appt_id})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Agendamento não encontrado")
-    return {"ok": True}
-
-
-@api_router.post("/appointments/{appt_id}/mark-reminder-sent")
-async def mark_reminder_sent(appt_id: str):
-    res = await db.appointments.update_one({"id": appt_id}, {"$set": {"reminder_status": "enviado"}})
-    if res.matched_count == 0:
-        raise HTTPException(404, "Agendamento não encontrado")
-    return {"ok": True}
-
-
-# =====================
 # Payment Methods
 # =====================
 @api_router.get("/payment-methods", response_model=List[PaymentMethod])
@@ -823,9 +653,7 @@ async def compute_sale(payload: SaleCreate) -> Sale:
         method_name = " + ".join(method_names_parts)
         return Sale(
             sale_date=payload.sale_date,
-            patient_id=payload.patient_id or "",
             patient_name=payload.patient_name or "",
-            child_name=payload.child_name or "",
             phone=payload.phone or "",
             items=items,
             description=payload.description or "",
@@ -844,7 +672,7 @@ async def compute_sale(payload: SaleCreate) -> Sale:
             if merged_schedule
             else payload.sale_date,
             post_sale_date=post_sale,
-            appointment_id=payload.appointment_id or "",
+            post_sale_contacted=False,
         )
 
     # ---- SINGLE PAYMENT MODE ----
@@ -884,9 +712,7 @@ async def compute_sale(payload: SaleCreate) -> Sale:
 
     return Sale(
         sale_date=payload.sale_date,
-        patient_id=payload.patient_id or "",
         patient_name=payload.patient_name or "",
-        child_name=payload.child_name or "",
         phone=payload.phone or "",
         items=items,
         description=payload.description or "",
@@ -903,18 +729,16 @@ async def compute_sale(payload: SaleCreate) -> Sale:
         payments=[],
         receive_date=receive_date,
         post_sale_date=post_sale,
-        appointment_id=payload.appointment_id or "",
+        post_sale_contacted=False,
     )
 
 
 @api_router.get("/sales", response_model=List[Sale])
-async def list_sales(month: Optional[str] = None, patient_id: Optional[str] = None):
+async def list_sales(month: Optional[str] = None):
     """month format: YYYY-MM"""
     query = {}
     if month:
         query["sale_date"] = {"$regex": f"^{month}"}
-    if patient_id:
-        query["patient_id"] = patient_id
     items = await db.sales.find(query, {"_id": 0}).sort("sale_date", -1).to_list(5000)
     return items
 
@@ -1035,15 +859,93 @@ async def toggle_installment_received(sale_id: str, installment_num: int, payloa
 
 
 # =====================
+# Pós-venda (45 dias após cada venda)
+# =====================
+def _sale_to_post_sale(s: Dict[str, Any]) -> Dict[str, Any]:
+    """Shape a sale doc into the response the Pós-venda UI expects."""
+    items = s.get("items") or []
+    items_summary = ", ".join(
+        f"{int(it.get('qty', 1))}x {it.get('name', '')}" for it in items
+    )
+    return {
+        "id": s.get("id"),
+        "patient_name": s.get("patient_name") or "",
+        "phone": s.get("phone") or "",
+        "sale_date": s.get("sale_date") or "",
+        "post_sale_date": s.get("post_sale_date") or "",
+        "post_sale_contacted": bool(s.get("post_sale_contacted", False)),
+        "items_summary": items_summary,
+        "gross_value": s.get("gross_value", 0),
+    }
+
+
+@api_router.get("/reminders/pending")
+async def pending_reminders():
+    """Vendas com pós-venda em janela de -7d a +14d, ainda não contatadas."""
+    seven_ago = (date.today() - timedelta(days=7)).isoformat()
+    in_14 = (date.today() + timedelta(days=14)).isoformat()
+    items = await db.sales.find({
+        "post_sale_date": {"$gte": seven_ago, "$lte": in_14},
+        "post_sale_contacted": {"$ne": True},
+    }, {"_id": 0}).sort("post_sale_date", 1).to_list(500)
+    return [_sale_to_post_sale(s) for s in items]
+
+
+@api_router.get("/post-sale")
+async def list_post_sale(status: Optional[str] = Query(None)):
+    """Lista todas as vendas com informação de pós-venda.
+
+    `status`: pendente, contatado, atrasado, all.
+    Atrasado = pendente AND post_sale_date < hoje.
+    """
+    today_iso = date.today().isoformat()
+    query: Dict[str, Any] = {
+        "post_sale_date": {"$nin": ["", None]},
+    }
+    if status == "pendente":
+        query["post_sale_contacted"] = {"$ne": True}
+    elif status == "contatado":
+        query["post_sale_contacted"] = True
+    elif status == "atrasado":
+        query["post_sale_contacted"] = {"$ne": True}
+        query["post_sale_date"] = {"$lt": today_iso, "$nin": ["", None]}
+    # "all" or None: no extra filter
+
+    items = await db.sales.find(query, {"_id": 0}).sort(
+        "post_sale_date", -1
+    ).to_list(2000)
+    return [_sale_to_post_sale(s) for s in items]
+
+
+@api_router.post("/sales/{sale_id}/mark-called")
+async def mark_sale_called(sale_id: str):
+    """Marcar a venda como já contatada (follow-up de 45 dias feito)."""
+    res = await db.sales.update_one(
+        {"id": sale_id}, {"$set": {"post_sale_contacted": True}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Venda não encontrada")
+    return {"ok": True}
+
+
+@api_router.post("/sales/{sale_id}/mark-pending")
+async def mark_sale_pending(sale_id: str):
+    """Voltar o follow-up pós-venda para pendente (undo)."""
+    res = await db.sales.update_one(
+        {"id": sale_id}, {"$set": {"post_sale_contacted": False}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Venda não encontrada")
+    return {"ok": True}
+
+
+# =====================
 # Dashboard
 # =====================
 @api_router.get("/dashboard")
 async def dashboard():
     today = date.today().isoformat()
     month_prefix = today[:7]
-
-    # Today appointments
-    today_appts = await db.appointments.count_documents({"date": today})
 
     # Month sales
     sales_cursor = db.sales.find({"sale_date": {"$regex": f"^{month_prefix}"}}, {"_id": 0})
@@ -1054,13 +956,15 @@ async def dashboard():
     total_cost = sum(s.get("total_cost", 0) for s in month_sales)
     sales_count = len(month_sales)
 
-    # Pending post-sale reminders (post_sale_date in past 7d to next 14d, reminder_status pendente)
+    # Vendas de hoje
+    today_sales = await db.sales.count_documents({"sale_date": today})
+
+    # Pós-venda pendente (janela -7d a +14d)
     seven_ago = (date.today() - timedelta(days=7)).isoformat()
     in_14 = (date.today() + timedelta(days=14)).isoformat()
-    pending_reminders = await db.appointments.count_documents({
+    pending_reminders = await db.sales.count_documents({
         "post_sale_date": {"$gte": seven_ago, "$lte": in_14},
-        "reminder_status": "pendente",
-        "status": {"$ne": "cancelado"},
+        "post_sale_contacted": {"$ne": True},
     })
 
     # Low stock count
@@ -1085,7 +989,7 @@ async def dashboard():
     return {
         "today": today,
         "month": month_prefix,
-        "today_appointments": today_appts,
+        "today_sales": today_sales,
         "month_gross": round(total_gross, 2),
         "month_profit": round(total_profit, 2),
         "month_fees": round(total_fees, 2),
@@ -1096,97 +1000,6 @@ async def dashboard():
         "chart_daily": chart,
         "chart_payment_methods": pm_chart,
     }
-
-
-@api_router.get("/reminders/pending")
-async def pending_reminders():
-    seven_ago = (date.today() - timedelta(days=7)).isoformat()
-    in_14 = (date.today() + timedelta(days=14)).isoformat()
-    items = await db.appointments.find({
-        "post_sale_date": {"$gte": seven_ago, "$lte": in_14},
-        "reminder_status": "pendente",
-        "status": {"$ne": "cancelado"},
-    }, {"_id": 0}).sort("post_sale_date", 1).to_list(500)
-    # Enrich with patient phone (and email) from the patients collection.
-    patient_ids = list({i.get("patient_id") for i in items if i.get("patient_id")})
-    phone_map: Dict[str, Dict[str, str]] = {}
-    if patient_ids:
-        async for p in db.patients.find(
-            {"id": {"$in": patient_ids}},
-            {"_id": 0, "id": 1, "phone": 1, "email": 1},
-        ):
-            phone_map[p["id"]] = {"phone": p.get("phone", ""), "email": p.get("email", "")}
-    for i in items:
-        info = phone_map.get(i.get("patient_id") or "", {})
-        i["patient_phone"] = info.get("phone", "")
-        i["patient_email"] = info.get("email", "")
-    return items
-
-
-@api_router.post("/appointments/{appt_id}/mark-called")
-async def mark_called(appt_id: str):
-    """Mark a post-sale reminder as already contacted (called)."""
-    res = await db.appointments.update_one(
-        {"id": appt_id}, {"$set": {"reminder_status": "contatado"}}
-    )
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Agendamento não encontrado")
-    return {"ok": True}
-
-
-@api_router.post("/appointments/{appt_id}/mark-pending")
-async def mark_pending(appt_id: str):
-    """Reset a post-sale reminder back to pending (undo)."""
-    res = await db.appointments.update_one(
-        {"id": appt_id}, {"$set": {"reminder_status": "pendente"}}
-    )
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Agendamento não encontrado")
-    return {"ok": True}
-
-
-@api_router.get("/post-sale")
-async def list_post_sale(status: Optional[str] = Query(None)):
-    """List all appointments with their post-sale info.
-
-    `status` filter values: pendente, contatado, atrasado, all.
-    Atrasado = pendente AND post_sale_date < today.
-    """
-    today_iso = date.today().isoformat()
-    query: Dict[str, Any] = {
-        "post_sale_date": {"$ne": ""},
-        "status": {"$ne": "cancelado"},
-    }
-    if status == "pendente":
-        query["reminder_status"] = "pendente"
-    elif status == "contatado":
-        query["reminder_status"] = "contatado"
-    elif status == "atrasado":
-        query["reminder_status"] = "pendente"
-        query["post_sale_date"] = {"$lt": today_iso, "$ne": ""}
-    # "all" or None: no extra filter
-
-    items = await db.appointments.find(query, {"_id": 0}).sort(
-        "post_sale_date", -1
-    ).to_list(2000)
-
-    # Enrich with patient phone/email
-    pids = list({i.get("patient_id") for i in items if i.get("patient_id")})
-    info_map: Dict[str, Dict[str, str]] = {}
-    if pids:
-        async for p in db.patients.find(
-            {"id": {"$in": pids}},
-            {"_id": 0, "id": 1, "phone": 1, "email": 1},
-        ):
-            info_map[p["id"]] = {
-                "phone": p.get("phone", ""),
-                "email": p.get("email", ""),
-            }
-    for i in items:
-        info = info_map.get(i.get("patient_id") or "", {})
-        i["patient_phone"] = info.get("phone", "")
-        i["patient_email"] = info.get("email", "")
-    return items
 
 
 @api_router.get("/reports/monthly")
@@ -1383,6 +1196,22 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def startup_event():
     await ensure_default_payment_methods()
+    # Backfill: garantir post_sale_date e post_sale_contacted em vendas antigas
+    async for s in db.sales.find(
+        {"$or": [
+            {"post_sale_date": {"$exists": False}},
+            {"post_sale_date": ""},
+            {"post_sale_contacted": {"$exists": False}},
+        ]},
+        {"_id": 0, "id": 1, "sale_date": 1, "post_sale_date": 1, "post_sale_contacted": 1},
+    ):
+        update: Dict[str, Any] = {}
+        if not s.get("post_sale_date"):
+            update["post_sale_date"] = compute_post_sale_date(s.get("sale_date", ""))
+        if "post_sale_contacted" not in s:
+            update["post_sale_contacted"] = False
+        if update:
+            await db.sales.update_one({"id": s["id"]}, {"$set": update})
 
 
 @app.on_event("shutdown")
