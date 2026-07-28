@@ -48,6 +48,11 @@
 - ✅ Seleção múltipla com quantidade por produto e contador total
 - ✅ Pré-visualização em tela e CSS `@media print` com `@page size: 95mm 12mm` para rolo contínuo
 
+### Iteração 5 (2026-07-28) — Melhorias na Pós-venda e Estoque
+- ✅ **Variant ID em vendas**: `Vendas.jsx` agora envia `variant_id` no payload de itens; estoque decrementa da cor/material corretos
+- ✅ **Filtro por cliente na Pós-venda**: clique no nome da cliente abre banner com histórico completo (mesmo nome ou telefone), com botão "Limpar filtro"
+- ✅ **WhatsApp com mensagem pronta**: link do ícone WhatsApp em Pós-venda e Dashboard agora inclui `?text=` com saudação personalizada ("Oi, [primeiro nome]! Aqui é da Clínica Dra. Brinquinho...")
+
 ### Iteração 4 (2026-07-28) — Simplificação: remoção de Prontuário
 - ✅ Removidas coleções `patients` e `appointments` e todos os endpoints associados
 - ✅ Página Prontuário substituída por **Vendas simplificada** (nome, telefone, data, itens, pagamento)

@@ -71,6 +71,24 @@ function digitsOnly(s) {
   return (s || "").replace(/\D/g, "");
 }
 
+// Mensagem de follow-up de 45 dias com saudação personalizada.
+function buildWhatsAppMessage(name) {
+  const first = ((name || "").split(" ")[0] || "").trim();
+  const saudacao = first ? `Oi, ${first}!` : "Oi!";
+  return (
+    `${saudacao} Aqui é da Clínica Dra. Brinquinho. ` +
+    "Passando para saber como está a cicatrização do seu piercing feito há cerca de 45 dias. " +
+    "Está tudo bem? Alguma dúvida ou incômodo? Fico à disposição."
+  );
+}
+
+function whatsappLink(phone, name) {
+  const tel = digitsOnly(phone);
+  const full = tel.length === 11 ? "55" + tel : tel;
+  const text = encodeURIComponent(buildWhatsAppMessage(name));
+  return `https://wa.me/${full}?text=${text}`;
+}
+
 const StatCard = ({ icon: Icon, label, value, hint, accent = "#C97D63", testid, onDelete, deleteTitle }) => (
   <div className="brinquinho-card p-6 relative" data-testid={testid}>
     {onDelete && (
@@ -328,10 +346,11 @@ export default function Dashboard() {
                           <Phone className="w-3.5 h-3.5" strokeWidth={1.5} />
                         </a>
                         <a
-                          href={`https://wa.me/${tel.length === 11 ? "55" + tel : tel}`}
+                          href={whatsappLink(r.phone, r.patient_name)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-1.5 rounded-lg bg-[#E5F1E0] text-[#5C7053]"
+                          title="WhatsApp com mensagem pronta"
                         >
                           <MessageCircle className="w-3.5 h-3.5" strokeWidth={1.5} />
                         </a>
@@ -391,11 +410,11 @@ export default function Dashboard() {
                               <Phone className="w-3.5 h-3.5" strokeWidth={1.5} />
                             </a>
                             <a
-                              href={`https://wa.me/${tel.length === 11 ? "55" + tel : tel}`}
+                              href={whatsappLink(r.phone, r.patient_name)}
                               target="_blank"
                               rel="noopener noreferrer"
                               data-testid={`reminder-wa-${r.id}`}
-                              title="Abrir WhatsApp"
+                              title="WhatsApp com mensagem pronta"
                               className="p-1.5 rounded-lg hover:bg-[#E5F1E0] text-[#7A726D] hover:text-[#5C7053]"
                             >
                               <MessageCircle className="w-3.5 h-3.5" strokeWidth={1.5} />

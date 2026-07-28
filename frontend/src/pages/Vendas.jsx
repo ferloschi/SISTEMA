@@ -229,6 +229,7 @@ export default function Vendas() {
         .filter((i) => i.name)
         .map((i) => ({
           product_id: i.product_id || "",
+          variant_id: i.variant_id || "",
           name: i.name,
           qty: parseInt(i.qty) || 1,
           unit_price: Number(i.unit_price) || 0,

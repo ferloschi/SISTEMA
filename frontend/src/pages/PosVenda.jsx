@@ -11,6 +11,8 @@ import {
   RotateCcw,
   Search,
   HeartPulse,
+  History,
+  X,
 } from "lucide-react";
 
 const TABS = [
@@ -19,6 +21,25 @@ const TABS = [
   { id: "contatado", label: "Já contatados" },
   { id: "all", label: "Todos" },
 ];
+
+// Saudação padrão para o follow-up de 45 dias via WhatsApp.
+// Mantida curta e acolhedora; a Dra. pode editar antes de enviar.
+function buildWhatsAppMessage(name) {
+  const first = ((name || "").split(" ")[0] || "").trim();
+  const saudacao = first ? `Oi, ${first}!` : "Oi!";
+  return (
+    `${saudacao} Aqui é da Clínica Dra. Brinquinho. ` +
+    "Passando para saber como está a cicatrização do seu piercing feito há cerca de 45 dias. " +
+    "Está tudo bem? Alguma dúvida ou incômodo? Fico à disposição."
+  );
+}
+
+function whatsappLink(phone, name) {
+  const tel = (phone || "").replace(/\D/g, "");
+  const full = tel.length === 11 ? "55" + tel : tel;
+  const text = encodeURIComponent(buildWhatsAppMessage(name));
+  return `https://wa.me/${full}?text=${text}`;
+}
 
 function daysUntil(iso) {
   if (!iso) return null;
@@ -71,12 +92,16 @@ export default function PosVenda() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState({ pendente: 0, atrasado: 0, contatado: 0, all: 0 });
+  // Cliente selecionada para ver histórico (nome + telefone).
+  // Quando definido, força o tab "all" e filtra apenas por essa cliente.
+  const [historyOf, setHistoryOf] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
+      const activeTab = historyOf ? "all" : tab;
       const [cur, pend, atra, cont, all] = await Promise.all([
-        api.get("/post-sale", { params: { status: tab } }),
+        api.get("/post-sale", { params: { status: activeTab } }),
         api.get("/post-sale", { params: { status: "pendente" } }),
         api.get("/post-sale", { params: { status: "atrasado" } }),
         api.get("/post-sale", { params: { status: "contatado" } }),
@@ -99,18 +124,42 @@ export default function PosVenda() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, historyOf]);
+
+  const openHistory = (r) => {
+    setHistoryOf({
+      name: r.patient_name || "",
+      phone: r.phone || "",
+    });
+    setSearch("");
+  };
+
+  const clearHistory = () => {
+    setHistoryOf(null);
+  };
 
   const filtered = useMemo(() => {
+    let list = items;
+    if (historyOf) {
+      const targetName = (historyOf.name || "").trim().toLowerCase();
+      const targetPhone = digitsOnly(historyOf.phone);
+      list = items.filter((r) => {
+        const nameMatch =
+          targetName && (r.patient_name || "").trim().toLowerCase() === targetName;
+        const phoneMatch =
+          targetPhone && digitsOnly(r.phone) === targetPhone;
+        return nameMatch || phoneMatch;
+      });
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
+    if (!q) return list;
+    return list.filter(
       (r) =>
         (r.patient_name || "").toLowerCase().includes(q) ||
         (r.phone || "").toLowerCase().includes(q) ||
         (r.items_summary || "").toLowerCase().includes(q)
     );
-  }, [items, search]);
+  }, [items, search, historyOf]);
 
   const markCalled = async (id) => {
     try {
@@ -160,12 +209,15 @@ export default function PosVenda() {
 
           <div className="flex items-center gap-2 mt-4 flex-wrap">
             {TABS.map((t) => {
-              const active = tab === t.id;
+              const active = !historyOf && tab === t.id;
               const count = counts[t.id];
               return (
                 <button
                   key={t.id}
-                  onClick={() => setTab(t.id)}
+                  onClick={() => {
+                    setHistoryOf(null);
+                    setTab(t.id);
+                  }}
                   data-testid={`posventa-tab-${t.id}`}
                   className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors ${
                     active
@@ -185,6 +237,31 @@ export default function PosVenda() {
               );
             })}
           </div>
+
+          {historyOf && (
+            <div
+              className="mt-4 flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-[#F2E4DF] border border-[#E8CFC1]"
+              data-testid="posventa-history-banner"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <History className="w-4 h-4 text-[#C97D63]" strokeWidth={1.5} />
+                <p className="text-sm text-[#2D2825] truncate">
+                  Histórico de pós-venda de{" "}
+                  <span className="font-semibold" data-testid="posventa-history-name">
+                    {historyOf.name || historyOf.phone || "—"}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={clearHistory}
+                data-testid="posventa-history-clear"
+                className="inline-flex items-center gap-1 text-xs font-medium text-[#7A726D] hover:text-[#C97D63]"
+              >
+                <X className="w-3.5 h-3.5" strokeWidth={2} />
+                Limpar filtro
+              </button>
+            </div>
+          )}
         </CardHeader>
 
         <CardContent>
@@ -209,10 +286,15 @@ export default function PosVenda() {
                       className="border border-[#EBE8E3] rounded-xl p-4 space-y-2 bg-white"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-medium text-[#2D2825] truncate">
+                        <div className="min-w-0 flex-1">
+                          <button
+                            onClick={() => openHistory(r)}
+                            data-testid={`posventa-history-open-mobile-${r.id}`}
+                            className="text-left font-medium text-[#2D2825] truncate hover:text-[#C97D63] hover:underline underline-offset-2"
+                            title="Ver histórico dessa cliente"
+                          >
                             {r.patient_name || "—"}
-                          </p>
+                          </button>
                           {r.items_summary && (
                             <p className="text-xs text-[#7A726D] line-clamp-2">
                               {r.items_summary}
@@ -240,11 +322,12 @@ export default function PosVenda() {
                             <Phone className="w-3.5 h-3.5" strokeWidth={1.5} />
                           </a>
                           <a
-                            href={`https://wa.me/${tel.length === 11 ? "55" + tel : tel}`}
+                            href={whatsappLink(r.phone, r.patient_name)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-1.5 rounded-lg bg-[#E5F1E0] text-[#5C7053]"
-                            title="WhatsApp"
+                            title="WhatsApp com mensagem pronta"
+                            data-testid={`posventa-wa-${r.id}`}
                           >
                             <MessageCircle className="w-3.5 h-3.5" strokeWidth={1.5} />
                           </a>
@@ -304,7 +387,15 @@ export default function PosVenda() {
                           <UrgencyBadge iso={r.post_sale_date} contacted={r.post_sale_contacted} />
                         </td>
                         <td className="py-3 px-4 font-medium text-[#2D2825]">
-                          {r.patient_name || "—"}
+                          <button
+                            onClick={() => openHistory(r)}
+                            data-testid={`posventa-history-open-${r.id}`}
+                            className="text-left hover:text-[#C97D63] hover:underline underline-offset-2 inline-flex items-center gap-1.5"
+                            title="Ver histórico dessa cliente"
+                          >
+                            {r.patient_name || "—"}
+                            <History className="w-3 h-3 text-[#C97D63] opacity-70" strokeWidth={1.5} />
+                          </button>
                         </td>
                         <td className="py-3 px-4 text-[#7A726D] max-w-xs truncate">
                           {r.items_summary || "—"}
@@ -321,10 +412,11 @@ export default function PosVenda() {
                                 <Phone className="w-3.5 h-3.5" strokeWidth={1.5} />
                               </a>
                               <a
-                                href={`https://wa.me/${tel.length === 11 ? "55" + tel : tel}`}
+                                href={whatsappLink(r.phone, r.patient_name)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                title="WhatsApp"
+                                title="WhatsApp com mensagem pronta"
+                                data-testid={`posventa-wa-${r.id}`}
                                 className="p-1.5 rounded-lg hover:bg-[#E5F1E0] text-[#7A726D] hover:text-[#5C7053]"
                               >
                                 <MessageCircle className="w-3.5 h-3.5" strokeWidth={1.5} />
