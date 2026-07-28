@@ -107,8 +107,7 @@ export default function GestaoFinanceira() {
       const res = await api.post("/sales/bulk-delete", null, { params });
       toast.success(`${res.data.deleted || 0} venda(s) excluída(s)`);
       loadSummary();
-      loadCardSales();
-      loadReceivables();
+      loadCard();
     } catch {
       toast.error("Erro ao excluir vendas");
     }
@@ -125,8 +124,7 @@ export default function GestaoFinanceira() {
     try {
       await api.delete(`/sales/${sale.id}/installments/${installmentNum}`);
       toast.success("Parcela excluída");
-      loadCardSales();
-      loadReceivables();
+      loadCard();
     } catch {
       toast.error("Erro ao excluir parcela");
     }
