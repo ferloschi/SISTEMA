@@ -1,6 +1,9 @@
 name: Fix Nginx Config
 
 on:
+  push:
+    paths:
+      - '.github/workflows/fix-nginx.yml'
   workflow_dispatch:
 
 jobs:
@@ -39,4 +42,4 @@ server {
 }
 NGINXCONF
             sudo cp /tmp/api.nginx /etc/nginx/sites-available/api
-            sudo nginx -t && sudo systemctl reload nginx && echo "Nginx OK"
+            sudo nginx -t && sudo systemctl reload nginx && echo "Nginx corrigido OK"
