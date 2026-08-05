@@ -17,8 +17,10 @@ jobs:
           username: ubuntu
           key: ${{ secrets.ORACLE_SSH_KEY }}
           script: |
-            cat > /tmp/api.nginx << 'NGINXCONF'
-server {
+            python3 - << 'PYEOF'
+            import subprocess
+
+            config = """server {
     listen 80;
     server_name api.drabrinquinho.com.br;
     return 301 https://$host$request_uri;
@@ -39,7 +41,13 @@ server {
         proxy_read_timeout 300;
         proxy_connect_timeout 300;
     }
-}
-NGINXCONF
-            sudo cp /tmp/api.nginx /etc/nginx/sites-available/api
-            sudo nginx -t && sudo systemctl reload nginx && echo "Nginx corrigido OK"
+}"""
+
+            with open('/tmp/api.nginx', 'w') as f:
+                f.write(config)
+
+            subprocess.run(['sudo', 'cp', '/tmp/api.nginx', '/etc/nginx/sites-available/api'], check=True)
+            subprocess.run(['sudo', 'nginx', '-t'], check=True)
+            subprocess.run(['sudo', 'systemctl', 'reload', 'nginx'], check=True)
+            print("Nginx corrigido com sucesso!")
+            PYEOF
