@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
 
 permissions:
   contents: read
@@ -70,6 +71,10 @@ jobs:
             cp "$RELEASE_DIR/server.py" "$APP_DIR/server.py"
             cp "$RELEASE_DIR/auth.py" "$APP_DIR/auth.py"
             cp "$RELEASE_DIR/requirements.txt" "$APP_DIR/requirements.txt"
+
+            # Remove remnants from the former hosted development environment.
+            rm -rf "$HOME/sistema/.emergent"
+            "$APP_DIR/venv/bin/pip" uninstall -y emergentintegrations || true
 
             sudo systemctl restart sistema
             sleep 3
