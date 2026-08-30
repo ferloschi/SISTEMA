@@ -5,6 +5,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import re
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
@@ -26,6 +27,26 @@ api_router = APIRouter(prefix="/api")
 
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+MONTH_PATTERN = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+def validate_month(month: Optional[str]) -> None:
+    if month and not MONTH_PATTERN.fullmatch(month):
+        raise HTTPException(400, "Mês inválido. Use o formato AAAA-MM.")
+
+
+def validate_year(year: Optional[int]) -> None:
+    if year is not None and not 2000 <= year <= 2100:
+        raise HTTPException(400, "Ano inválido.")
+
+
+def parse_iso_date(value: str) -> date:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Data inválida. Use o formato AAAA-MM-DD.")
 
 
 # =====================
@@ -361,6 +382,45 @@ async def _decrement_variant_stock(product_id: str, variant_id: Optional[str], q
     )
 
 
+async def _validate_stock_for_sale(items: List[SaleItem]) -> None:
+    """Validate product/variant references and aggregate stock requirements.
+
+    This prevents a sale from being recorded when one or more lines would
+    consume more stock than is available.
+    """
+    products: Dict[str, Dict[str, Any]] = {}
+    required: Dict[tuple[str, str], int] = {}
+
+    for item in items:
+        if not item.product_id:
+            continue
+        if item.product_id not in products:
+            doc = await db.products.find_one({"id": item.product_id}, {"_id": 0})
+            if not doc:
+                raise HTTPException(400, f'Produto "{item.name}" não encontrado.')
+            products[item.product_id] = _ensure_variants(doc)
+
+        doc = products[item.product_id]
+        variants = doc.get("variants") or []
+        target_id = item.variant_id or (variants[0]["id"] if variants else "")
+        variant = next((v for v in variants if v.get("id") == target_id), None)
+        if not variant:
+            raise HTTPException(400, f'Variante inválida para "{item.name}".')
+        key = (item.product_id, target_id)
+        required[key] = required.get(key, 0) + int(item.qty)
+
+    for (product_id, variant_id), qty in required.items():
+        doc = products[product_id]
+        variant = next(v for v in doc["variants"] if v.get("id") == variant_id)
+        available = int(variant.get("stock_qty") or 0)
+        if qty > available:
+            product_name = doc.get("name") or "Produto"
+            raise HTTPException(
+                400,
+                f'Estoque insuficiente para "{product_name}": disponível {available}, solicitado {qty}.',
+            )
+
+
 async def _increment_variant_stock(product_id: str, variant_id: Optional[str], qty: int):
     doc = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not doc:
@@ -590,10 +650,19 @@ async def delete_procedure(proc_id: str):
 # =====================
 async def compute_sale(payload: SaleCreate) -> Sale:
     items = [i if isinstance(i, SaleItem) else SaleItem(**i) for i in payload.items]
+    if not items:
+        raise HTTPException(400, "Adicione ao menos um item à venda.")
+    for item in items:
+        if not (item.name or "").strip():
+            raise HTTPException(400, "Todos os itens precisam de um nome.")
+        if item.qty <= 0:
+            raise HTTPException(400, "A quantidade dos itens deve ser maior que zero.")
+        if item.unit_price < 0 or item.unit_cost < 0:
+            raise HTTPException(400, "Preço e custo dos itens não podem ser negativos.")
     cost = sum(i.qty * i.unit_cost for i in items)
     items_gross = sum(i.qty * i.unit_price for i in items)
-    post_sale = compute_post_sale_date(payload.sale_date)
-    sale_date_obj = datetime.strptime(payload.sale_date, "%Y-%m-%d").date()
+    sale_date_obj = parse_iso_date(payload.sale_date)
+    post_sale = (sale_date_obj + timedelta(days=45)).isoformat()
 
     # ---- MIXED PAYMENT MODE ----
     if payload.payments and len(payload.payments) > 0:
@@ -736,6 +805,7 @@ async def compute_sale(payload: SaleCreate) -> Sale:
 @api_router.get("/sales", response_model=List[Sale])
 async def list_sales(month: Optional[str] = None):
     """month format: YYYY-MM"""
+    validate_month(month)
     query = {}
     if month:
         query["sale_date"] = {"$regex": f"^{month}"}
@@ -746,6 +816,7 @@ async def list_sales(month: Optional[str] = None):
 @api_router.post("/sales", response_model=Sale)
 async def create_sale(payload: SaleCreate):
     sale = await compute_sale(payload)
+    await _validate_stock_for_sale(sale.items)
     await db.sales.insert_one(sale.model_dump())
     # decrement stock on the specific variant when product_id is set
     for it in sale.items:
@@ -785,6 +856,14 @@ async def bulk_delete_sales(
 
     bucket values match /finance/summary: dinheiro, pix, debito, cartao_parcelado, outros
     """
+    validate_month(month)
+    validate_year(year)
+    allowed_buckets = {"dinheiro", "pix", "debito", "cartao_parcelado", "outros"}
+    if bucket and bucket not in allowed_buckets:
+        raise HTTPException(400, "Categoria financeira inválida.")
+    if not any((month, year, bucket)):
+        raise HTTPException(400, "Informe mês, ano ou categoria para excluir vendas.")
+
     query: Dict[str, Any] = {}
     if month:
         query["sale_date"] = {"$regex": f"^{month}"}
@@ -1077,6 +1156,7 @@ async def dashboard():
 @api_router.get("/reports/monthly")
 async def reports_monthly(year: int = Query(..., description="Year, e.g. 2026")):
     """Aggregated monthly report for given year."""
+    validate_year(year)
     pipeline = [
         {"$match": {"sale_date": {"$regex": f"^{year}-"}}},
         {"$group": {
@@ -1144,6 +1224,8 @@ def bucket_for_payment(method_name: str, installments: int = 1) -> str:
 async def finance_summary(month: Optional[str] = None, year: Optional[int] = None):
     """Aggregated payment values. Provide month=YYYY-MM or year=YYYY.
     For mixed payments, each method's amount is allocated to its proper bucket."""
+    validate_month(month)
+    validate_year(year)
     query = {}
     if month:
         query["sale_date"] = {"$regex": f"^{month}"}
@@ -1179,6 +1261,7 @@ async def finance_summary(month: Optional[str] = None, year: Optional[int] = Non
 @api_router.get("/finance/card-sales")
 async def finance_card_sales(month: Optional[str] = None):
     """List card-payment sales with installment schedules."""
+    validate_month(month)
     query = {}
     if month:
         query["sale_date"] = {"$regex": f"^{month}"}
@@ -1191,6 +1274,7 @@ async def finance_card_sales(month: Optional[str] = None):
 @api_router.get("/finance/receivables")
 async def finance_receivables(month: Optional[str] = None):
     """Receivables expected per month (from schedules) with received vs pending."""
+    validate_month(month)
     sales = await db.sales.find({}, {"_id": 0}).to_list(10000)
     by_month: dict[str, dict] = {}
     for s in sales:

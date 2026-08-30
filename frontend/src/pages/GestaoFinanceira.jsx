@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, formatBRL, formatDate } from "@/lib/api";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -84,11 +84,11 @@ export default function GestaoFinanceira() {
   const [cardMonth, setCardMonth] = useState(todayISO().slice(0, 7));
   const [receivables, setReceivables] = useState([]);
 
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
     const params = scope === "month" ? { month } : { year };
     const res = await api.get("/finance/summary", { params });
     setSummary(res.data);
-  };
+  }, [scope, month, year]);
 
   const deleteBucket = async (bucket) => {
     const scopeLabel = scope === "month" ? `mês ${month}` : `ano ${year}`;
@@ -130,26 +130,24 @@ export default function GestaoFinanceira() {
     }
   };
 
-  const loadCard = async () => {
+  const loadCard = useCallback(async () => {
     const [c, r] = await Promise.all([
       api.get("/finance/card-sales", { params: { month: cardMonth || undefined } }),
       api.get("/finance/receivables"),
     ]);
     setCardSales(c.data);
     setReceivables(r.data);
-  };
+  }, [cardMonth]);
 
   useEffect(() => {
     loadSummary();
-    // eslint-disable-next-line
-  }, [scope, month, year]);
+  }, [loadSummary]);
 
   useEffect(() => {
     loadCard();
-    // eslint-disable-next-line
-  }, [cardMonth]);
+  }, [loadCard]);
 
-  const buckets = summary?.buckets || {};
+  const buckets = useMemo(() => summary?.buckets || {}, [summary]);
   const counts = summary?.counts || {};
 
   const pieData = useMemo(() => {
@@ -312,7 +310,7 @@ export default function GestaoFinanceira() {
                 </p>
               ) : (
                 <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <PieChart>
                       <Pie
                         data={pieData}
@@ -344,7 +342,7 @@ export default function GestaoFinanceira() {
                 </p>
               ) : (
                 <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <BarChart data={monthlyReceivables}>
                       <CartesianGrid stroke="#EBE8E3" strokeDasharray="3 3" />
                       <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#7A726D" }} />

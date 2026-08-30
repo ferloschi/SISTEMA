@@ -219,6 +219,21 @@ export default function Vendas() {
       toast.error("Adicione ao menos um item.");
       return;
     }
+    for (const item of form.items.filter((i) => i.product_id)) {
+      const product = products.find((p) => p.id === item.product_id);
+      const variants = product?.variants || [];
+      if (variants.length > 1 && !item.variant_id) {
+        toast.error(`Selecione a variante de "${product?.name || item.name}".`);
+        return;
+      }
+      const variant = variants.find((v) => v.id === item.variant_id) || variants[0];
+      if (variant && Number(item.qty || 0) > Number(variant.stock_qty || 0)) {
+        toast.error(
+          `Estoque insuficiente para "${product?.name || item.name}". Disponível: ${variant.stock_qty || 0}.`
+        );
+        return;
+      }
+    }
     const payload = {
       ...form,
       card_fee_pct:

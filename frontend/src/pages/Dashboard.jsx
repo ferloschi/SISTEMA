@@ -106,10 +106,12 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [waTemplate, setWaTemplate] = useState(DEFAULT_WHATSAPP_TEMPLATE);
 
   const load = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const [d, r, s] = await Promise.all([
         api.get("/dashboard"),
@@ -119,6 +121,10 @@ export default function Dashboard() {
       setData(d.data);
       setReminders(r.data);
       if (s.data?.whatsapp_template) setWaTemplate(s.data.whatsapp_template);
+    } catch {
+      setData(null);
+      setReminders([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -160,10 +166,30 @@ export default function Dashboard() {
     }
   };
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="text-[#7A726D]" data-testid="dashboard-loading">
         Carregando dados...
+      </div>
+    );
+  }
+
+  if (loadError || !data) {
+    return (
+      <div className="brinquinho-card p-6 max-w-xl" role="alert">
+        <h2 className="font-heading text-lg font-semibold text-[#2D2825]">
+          Não foi possível carregar o painel
+        </h2>
+        <p className="text-sm text-[#7A726D] mt-1">
+          Verifique a conexão com o servidor e tente novamente.
+        </p>
+        <button
+          type="button"
+          onClick={load}
+          className="mt-4 px-4 py-2 rounded-xl bg-[#C97D63] text-white text-sm font-medium hover:bg-[#B36B53]"
+        >
+          Tentar novamente
+        </button>
       </div>
     );
   }
@@ -235,7 +261,7 @@ export default function Dashboard() {
             </h3>
           </div>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <LineChart data={data.chart_daily}>
                 <CartesianGrid stroke="#EBE8E3" strokeDasharray="3 3" />
                 <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#7A726D" }} />
@@ -270,7 +296,7 @@ export default function Dashboard() {
                 Sem vendas no mês.
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <PieChart>
                   <Pie
                     data={data.chart_payment_methods}

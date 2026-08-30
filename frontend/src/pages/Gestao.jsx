@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, formatBRL } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -50,7 +50,7 @@ export default function Gestao() {
   const [monthly, setMonthly] = useState([]);
   const [products, setProducts] = useState([]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const [pm, m, p] = await Promise.all([
       api.get("/payment-methods"),
       api.get("/reports/monthly", { params: { year } }),
@@ -59,7 +59,7 @@ export default function Gestao() {
     setMethods(pm.data);
     setMonthly(m.data);
     setProducts(p.data);
-  };
+  }, [year]);
 
   const deleteYearSales = async () => {
     if (
@@ -81,7 +81,7 @@ export default function Gestao() {
 
   useEffect(() => {
     load();
-  }, [year]);
+  }, [load]);
 
   const openNew = () => {
     setEditing(null);
@@ -300,7 +300,7 @@ export default function Gestao() {
                   Sem dados para o ano selecionado.
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <BarChart data={monthly}>
                     <CartesianGrid stroke="#EBE8E3" strokeDasharray="3 3" />
                     <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#7A726D" }} />

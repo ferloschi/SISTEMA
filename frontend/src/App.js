@@ -46,6 +46,7 @@ function App() {
               <Route path="/prontuarios" element={<Navigate to="/vendas" replace />} />
               <Route path="/pacientes" element={<Navigate to="/vendas" replace />} />
               <Route path="/agendamento" element={<Navigate to="/vendas" replace />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </Routes>
         </AuthProvider>

@@ -109,6 +109,7 @@ function SidebarBody({ onNavigate, user, logout }) {
               onClick={logout}
               data-testid="sidebar-logout-btn"
               title="Sair"
+              aria-label="Sair"
               className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
             >
               <LogOut className="w-4 h-4" strokeWidth={1.5} />
