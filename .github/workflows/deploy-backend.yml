@@ -1,0 +1,77 @@
+name: Deploy Backend to Oracle Cloud
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-backend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload release files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 137.131.184.106
+          username: ubuntu
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          source: "backend/server.py,backend/auth.py,backend/requirements.txt"
+          target: "/tmp/sistema-${{ github.run_id }}"
+
+      - name: Activate release
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 137.131.184.106
+          username: ubuntu
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -eu
+
+            APP_DIR="$HOME/sistema/backend"
+            RELEASE_DIR="/tmp/sistema-${{ github.run_id }}/backend"
+            BACKUP_DIR="$HOME/sistema/backups/backend-${{ github.run_id }}"
+
+            test -f "$RELEASE_DIR/server.py"
+            test -f "$RELEASE_DIR/auth.py"
+            "$APP_DIR/venv/bin/python" -m py_compile \
+              "$RELEASE_DIR/server.py" \
+              "$RELEASE_DIR/auth.py"
+
+            mkdir -p "$BACKUP_DIR"
+            cp "$APP_DIR/server.py" "$BACKUP_DIR/server.py"
+            cp "$APP_DIR/auth.py" "$BACKUP_DIR/auth.py"
+            if test -f "$APP_DIR/requirements.txt"; then
+              cp "$APP_DIR/requirements.txt" "$BACKUP_DIR/requirements.txt"
+            fi
+
+            rollback() {
+              cp "$BACKUP_DIR/server.py" "$APP_DIR/server.py"
+              cp "$BACKUP_DIR/auth.py" "$APP_DIR/auth.py"
+              if test -f "$BACKUP_DIR/requirements.txt"; then
+                cp "$BACKUP_DIR/requirements.txt" "$APP_DIR/requirements.txt"
+              fi
+              sudo systemctl restart sistema
+            }
+            trap rollback ERR
+
+            cp "$RELEASE_DIR/server.py" "$APP_DIR/server.py"
+            cp "$RELEASE_DIR/auth.py" "$APP_DIR/auth.py"
+            cp "$RELEASE_DIR/requirements.txt" "$APP_DIR/requirements.txt"
+
+            sudo systemctl restart sistema
+            sleep 3
+            sudo systemctl is-active --quiet sistema
+            curl --fail --silent --show-error http://127.0.0.1:8000/api/
+
+            trap - ERR
+            rm -rf "/tmp/sistema-${{ github.run_id }}"
+            echo "Backend deployed successfully from ${{ github.sha }}"
