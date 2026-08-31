@@ -154,9 +154,9 @@ export default function Etiquetas() {
       {/* Header / Controls (hidden in print) */}
       <div className="no-print">
         <Card className="border-[#EBE8E3]">
-          <CardHeader>
+          <CardHeader className="p-4 sm:p-6">
             <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div>
+              <div className="min-w-0">
                 <CardTitle className="font-heading text-xl text-[#2D2825] flex items-center gap-2">
                   <Tag className="w-5 h-5 text-[#C97D63]" strokeWidth={1.5} />
                   Etiquetas de Produtos
@@ -166,10 +166,10 @@ export default function Etiquetas() {
                   <strong>95mm × 12mm</strong> — 50mm com texto (duas metades de 25mm) + 45mm de cauda em branco.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
                 <span
                   data-testid="etiquetas-total-count"
-                  className="text-sm text-[#2D2825] bg-[#F2E4DF] px-3 py-1.5 rounded-full"
+                  className="col-span-2 flex min-h-9 items-center justify-center rounded-full bg-[#F2E4DF] px-3 py-1.5 text-sm text-[#2D2825] sm:col-span-1"
                 >
                   {totalCount} etiqueta(s)
                 </span>
@@ -177,14 +177,14 @@ export default function Etiquetas() {
                   variant="outline"
                   onClick={clearAll}
                   data-testid="etiquetas-clear-btn"
-                  className="border-[#EBE8E3]"
+                  className="w-full border-[#EBE8E3] sm:w-auto"
                 >
                   Limpar
                 </Button>
                 <Button
                   onClick={handlePrint}
                   data-testid="etiquetas-print-btn"
-                  className="bg-[#C97D63] hover:bg-[#B56A52] text-white"
+                  className="w-full bg-[#C97D63] text-white hover:bg-[#B56A52] sm:w-auto"
                 >
                   <Printer className="w-4 h-4 mr-2" strokeWidth={1.5} />
                   Imprimir
@@ -192,9 +192,9 @@ export default function Etiquetas() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[240px]">
+          <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
+              <div className="relative w-full min-w-0 flex-1 sm:min-w-[240px]">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#7A726D]" />
                 <Input
                   data-testid="etiquetas-search-input"
@@ -208,14 +208,14 @@ export default function Etiquetas() {
                 variant="outline"
                 onClick={selectAllVisible}
                 data-testid="etiquetas-select-all-btn"
-                className="border-[#EBE8E3]"
+                className="h-auto min-h-10 w-full whitespace-normal border-[#EBE8E3] text-center sm:w-auto"
               >
                 Selecionar todos visíveis (1 cópia)
               </Button>
             </div>
 
             <div className="border border-[#EBE8E3] rounded-xl overflow-hidden">
-              <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-[#FBF6F2] text-[11px] uppercase tracking-wider text-[#7A726D]">
+              <div className="hidden grid-cols-12 gap-2 bg-[#FBF6F2] px-4 py-2 text-[11px] uppercase tracking-wider text-[#7A726D] md:grid">
                 <div className="col-span-4">Produto</div>
                 <div className="col-span-2">SKU</div>
                 <div className="col-span-2">Material</div>
@@ -235,49 +235,59 @@ export default function Etiquetas() {
                     <div
                       key={rowKey}
                       data-testid={`etiquetas-row-${rowKey}`}
-                      className="grid grid-cols-12 gap-2 px-4 py-3 items-center hover:bg-[#FDFDF9]"
+                      className="grid grid-cols-1 gap-3 p-4 hover:bg-[#FDFDF9] md:grid-cols-12 md:items-center md:gap-2 md:px-4 md:py-3"
                     >
-                      <div className="col-span-4">
-                        <div className="text-sm font-medium text-[#2D2825]">{p.name}</div>
+                      <div className="min-w-0 md:col-span-4">
+                        <div className="break-words text-sm font-medium text-[#2D2825]">{p.name}</div>
                         <div className="text-xs text-[#7A726D]">
                           {p.category}
-                          {[v.color, v.material].filter(Boolean).length > 0 &&
-                            ` · ${[v.color, v.material].filter(Boolean).join(" / ")}`}
+                          {v.color && ` · ${v.color}`}
                         </div>
                       </div>
-                      <div className="col-span-2 text-sm text-[#2D2825]">{p.sku || "—"}</div>
-                      <div className="col-span-2 text-sm text-[#2D2825]">{v.material || "—"}</div>
-                      <div className="col-span-2 text-sm text-[#2D2825]">{v.size || "—"}</div>
-                      <div className="col-span-1 text-sm text-[#2D2825] text-right">
+                      <div className="hidden break-words text-sm text-[#2D2825] md:col-span-2 md:block">{p.sku || "—"}</div>
+                      <div className="hidden break-words text-sm text-[#2D2825] md:col-span-2 md:block">{v.material || "—"}</div>
+                      <div className="hidden break-words text-sm text-[#2D2825] md:col-span-2 md:block">{v.size || "—"}</div>
+                      <div className="hidden text-right text-sm text-[#2D2825] md:col-span-1 md:block">
                         {formatBRL(v.sale_value)}
                       </div>
-                      <div className="col-span-1 flex items-center justify-end gap-1">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => dec(rowKey)}
-                          data-testid={`etiquetas-dec-${rowKey}`}
-                          className="h-7 w-7 border-[#EBE8E3]"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </Button>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={qty}
-                          onChange={(e) => setQty(rowKey, e.target.value)}
-                          data-testid={`etiquetas-qty-${rowKey}`}
-                          className="h-7 w-12 text-center px-1 border-[#EBE8E3]"
-                        />
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => inc(rowKey)}
-                          data-testid={`etiquetas-inc-${rowKey}`}
-                          className="h-7 w-7 border-[#EBE8E3]"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </Button>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg bg-[#FBF6F2] p-3 md:hidden">
+                        <ProductDetail label="SKU" value={p.sku || "—"} />
+                        <ProductDetail label="Valor" value={formatBRL(v.sale_value)} align="right" />
+                        <ProductDetail label="Material" value={v.material || "—"} />
+                        <ProductDetail label="Tamanho" value={v.size || "—"} align="right" />
+                      </div>
+                      <div className="flex items-center justify-between border-t border-[#EBE8E3] pt-3 md:col-span-1 md:justify-end md:gap-1 md:border-0 md:pt-0">
+                        <span className="text-xs font-medium uppercase tracking-wider text-[#7A726D] md:hidden">
+                          Quantidade
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => dec(rowKey)}
+                            data-testid={`etiquetas-dec-${rowKey}`}
+                            className="h-7 w-7 border-[#EBE8E3]"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </Button>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={qty}
+                            onChange={(e) => setQty(rowKey, e.target.value)}
+                            data-testid={`etiquetas-qty-${rowKey}`}
+                            className="h-7 w-12 text-center px-1 border-[#EBE8E3]"
+                          />
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => inc(rowKey)}
+                            data-testid={`etiquetas-inc-${rowKey}`}
+                            className="h-7 w-7 border-[#EBE8E3]"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -385,6 +395,17 @@ export default function Etiquetas() {
 /* ------------------------------------------------------------------ */
 /* Label components                                                    */
 /* ------------------------------------------------------------------ */
+
+function ProductDetail({ label, value, align = "left" }) {
+  return (
+    <div className={align === "right" ? "min-w-0 text-right" : "min-w-0"}>
+      <div className="text-[10px] font-medium uppercase tracking-wider text-[#7A726D]">
+        {label}
+      </div>
+      <div className="mt-0.5 break-words text-sm text-[#2D2825]">{value}</div>
+    </div>
+  );
+}
 
 const labelBaseStyle = {
   width: "95mm",
