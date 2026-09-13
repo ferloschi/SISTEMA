@@ -601,7 +601,7 @@ export default function Estoque() {
                         className="flex items-center justify-between text-xs text-[#2D2825] bg-white border border-[#EBE8E3] rounded-md px-2 py-1.5"
                       >
                         <span className="truncate">
-                          {[v.color, v.material, v.size].filter(Boolean).join(" · ") || "—"}
+                          {[v.color, v.material, v.size, v.fornecedor && `Forn: ${v.fornecedor}`].filter(Boolean).join(" · ") || "—"}
                         </span>
                         <span className="text-[#C97D63] font-medium ml-2 shrink-0">
                           {formatBRL(v.sale_value)} · est. {v.stock_qty}
@@ -736,7 +736,7 @@ export default function Estoque() {
                           </p>
                           {p.variants.slice(0, 3).map((v) => (
                             <p key={v.id}>
-                              · {[v.color, v.material, v.size].filter(Boolean).join(" / ") ||
+                              · {[v.color, v.material, v.size, v.fornecedor && `Forn: ${v.fornecedor}`].filter(Boolean).join(" / ") ||
                                 "sem detalhes"}
                               <span className="text-[#C97D63]"> ({v.stock_qty} em est.)</span>
                             </p>
