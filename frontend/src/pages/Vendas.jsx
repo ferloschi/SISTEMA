@@ -131,7 +131,8 @@ export default function Vendas() {
           ...items[idx],
           variant_id: v.id,
           name: label ? `${pr.name} — ${label}` : pr.name,
-          unit_price: v.sale_value,
+          // variante tem purchase_value mas não sale_value individual — usa o do produto pai
+          unit_price: pr.sale_value,
           unit_cost: v.purchase_value,
         };
       }
@@ -447,114 +448,201 @@ export default function Vendas() {
                   </Button>
                 </div>
                 <div className="space-y-2">
-                  {form.items.map((it, idx) => (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-12 gap-2 items-end p-3 rounded-xl bg-[#FDFDF9] border border-[#EBE8E3]"
-                    >
-                      <div className="col-span-12 md:col-span-3">
-                        <Label className="text-xs">Produto (opcional)</Label>
-                        <Select
-                          value={it.product_id || ""}
-                          onValueChange={(v) => pickProduct(idx, v)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="— Avulso —" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name}
-                                {p.variants?.length > 1
-                                  ? ` (${p.variants.length} variantes)`
-                                  : ` (${formatBRL(p.sale_value)})`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {(() => {
-                        const pr = products.find((p) => p.id === it.product_id);
-                        if (!pr || !pr.variants || pr.variants.length <= 1) return null;
-                        return (
-                          <div className="col-span-12 md:col-span-2">
-                            <Label className="text-xs text-[#C97D63]">Variante *</Label>
-                            <Select
-                              value={it.variant_id || ""}
-                              onValueChange={(v) => pickVariant(idx, v)}
-                            >
-                              <SelectTrigger data-testid={`form-variant-${idx}`}>
-                                <SelectValue placeholder="Selecionar" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {pr.variants.map((v) => (
-                                  <SelectItem key={v.id} value={v.id}>
-                                    {[v.color, v.material].filter(Boolean).join(" / ") ||
-                                      "sem detalhes"}{" "}
-                                    · {formatBRL(v.sale_value)} · est. {v.stock_qty}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                  {form.items.map((it, idx) => {
+                    const pr = products.find((p) => p.id === it.product_id);
+                    const hasVariants = pr?.variants?.length > 1;
+                    // SKU search state is stored per-item in skuInputs
+                    return (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-xl bg-[#FDFDF9] border border-[#EBE8E3] space-y-2"
+                      >
+                        {/* linha 1: SKU + variante + descrição + remover */}
+                        <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-end">
+
+                          {/* SKU com autocomplete */}
+                          <div className="col-span-2 sm:col-span-3 relative">
+                            <Label className="text-xs">SKU</Label>
+                            <div className="relative">
+                              <Input
+                                placeholder="Digite o SKU..."
+                                value={it._skuInput ?? (pr?.sku || "")}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  updateItem(idx, "_skuInput", val);
+                                  // Se limpa o campo, limpa o produto
+                                  if (!val) {
+                                    setForm((f) => {
+                                      const items = [...f.items];
+                                      items[idx] = { ...emptyItem, _skuInput: "" };
+                                      return { ...f, items };
+                                    });
+                                  }
+                                }}
+                                className="uppercase"
+                                autoComplete="off"
+                              />
+                              {/* dropdown de sugestões */}
+                              {it._skuInput && !it.product_id && (() => {
+                                const q = it._skuInput.toLowerCase();
+                                const matches = products.filter(
+                                  (p) =>
+                                    p.sku?.toLowerCase().includes(q) ||
+                                    p.name?.toLowerCase().includes(q)
+                                ).slice(0, 8);
+                                if (!matches.length) return (
+                                  <div className="absolute z-50 mt-1 w-full bg-white border border-[#EBE8E3] rounded-lg shadow-lg text-xs text-[#7A726D] p-2">
+                                    Nenhum produto encontrado
+                                  </div>
+                                );
+                                return (
+                                  <div className="absolute z-50 mt-1 w-full bg-white border border-[#EBE8E3] rounded-lg shadow-lg overflow-hidden">
+                                    {matches.map((p) => (
+                                      <button
+                                        key={p.id}
+                                        type="button"
+                                        className="w-full text-left px-3 py-2 text-xs hover:bg-[#F2E4DF] flex items-center justify-between gap-2"
+                                        onClick={() => {
+                                          pickProduct(idx, p.id);
+                                          updateItem(idx, "_skuInput", p.sku);
+                                        }}
+                                      >
+                                        <span>
+                                          <span className="font-mono font-semibold text-[#C97D63]">{p.sku}</span>
+                                          {" — "}{p.name}
+                                        </span>
+                                        <span className="text-[#7A726D] shrink-0">
+                                          {p.variants?.length > 1
+                                            ? `${p.variants.length} var.`
+                                            : formatBRL(p.sale_value)}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                            {/* badge do produto selecionado */}
+                            {pr && (
+                              <div className="mt-1 flex items-center gap-1">
+                                <span className="text-[11px] bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1] px-2 py-0.5 rounded-full font-medium truncate max-w-[140px]">
+                                  {pr.name}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setForm((f) => {
+                                      const items = [...f.items];
+                                      items[idx] = { ...emptyItem, _skuInput: "" };
+                                      return { ...f, items };
+                                    });
+                                  }}
+                                  className="text-[#7A726D] hover:text-[#D06B6B]"
+                                  title="Remover produto"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        );
-                      })()}
-                      <div className="col-span-12 md:col-span-2">
-                        <Label className="text-xs">Descrição</Label>
-                        <Input
-                          value={it.name}
-                          onChange={(e) => updateItem(idx, "name", e.target.value)}
-                        />
-                      </div>
-                      <div className="col-span-3 md:col-span-1">
-                        <Label className="text-xs">Qtd</Label>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={it.qty}
-                          onChange={(e) => updateItem(idx, "qty", e.target.value)}
-                        />
-                      </div>
-                      <div className="col-span-4 md:col-span-2">
-                        <Label className="text-xs">Preço unit.</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={it.unit_price}
-                          onChange={(e) => updateItem(idx, "unit_price", e.target.value)}
-                        />
-                      </div>
-                      <div className="col-span-4 md:col-span-1">
-                        <Label className="text-xs flex items-center gap-1">
-                          Custo
-                          {it.product_id && (
-                            <span
-                              className="text-[10px] text-[#5C7053]"
-                              title="Puxado automaticamente do estoque"
-                            >
-                              auto
-                            </span>
+
+                          {/* Variante — só aparece se o produto tem variantes */}
+                          {hasVariants && (
+                            <div className="col-span-2 sm:col-span-3">
+                              <Label className="text-xs text-[#C97D63] font-semibold">
+                                Variante *
+                              </Label>
+                              <Select
+                                value={it.variant_id || ""}
+                                onValueChange={(v) => pickVariant(idx, v)}
+                              >
+                                <SelectTrigger data-testid={`form-variant-${idx}`}>
+                                  <SelectValue placeholder="Selecionar variante" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {pr.variants.map((v) => {
+                                    const label = [v.color, v.material].filter(Boolean).join(" / ") || "sem detalhes";
+                                    return (
+                                      <SelectItem key={v.id} value={v.id}>
+                                        <span className="flex items-center gap-2">
+                                          <span>{label}</span>
+                                          <span className="text-[#C97D63]">{formatBRL(v.purchase_value)}</span>
+                                          <span className="text-[#7A726D] text-[11px]">est. {v.stock_qty}</span>
+                                        </span>
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
                           )}
-                        </Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={it.unit_cost}
-                          onChange={(e) => updateItem(idx, "unit_cost", e.target.value)}
-                          className={it.product_id ? "bg-[#E4EDDF]/30" : ""}
-                        />
+
+                          {/* Descrição */}
+                          <div className={`col-span-2 ${hasVariants ? "sm:col-span-3" : "sm:col-span-6"}`}>
+                            <Label className="text-xs">Descrição</Label>
+                            <Input
+                              value={it.name}
+                              onChange={(e) => updateItem(idx, "name", e.target.value)}
+                              placeholder="Descrição do item"
+                            />
+                          </div>
+
+                          {/* Qtd */}
+                          <div className="col-span-1 sm:col-span-1">
+                            <Label className="text-xs">Qtd</Label>
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              min="1"
+                              value={it.qty}
+                              onChange={(e) => updateItem(idx, "qty", e.target.value)}
+                            />
+                          </div>
+
+                          {/* Preço */}
+                          <div className="col-span-1 sm:col-span-1">
+                            <Label className="text-xs">Preço</Label>
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              step="0.01"
+                              value={it.unit_price}
+                              onChange={(e) => updateItem(idx, "unit_price", e.target.value)}
+                            />
+                          </div>
+
+                          {/* Custo */}
+                          <div className="col-span-1 sm:col-span-1">
+                            <Label className="text-xs flex items-center gap-1">
+                              Custo
+                              {it.product_id && (
+                                <span className="text-[10px] text-[#5C7053]">auto</span>
+                              )}
+                            </Label>
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              step="0.01"
+                              value={it.unit_cost}
+                              onChange={(e) => updateItem(idx, "unit_cost", e.target.value)}
+                              className={it.product_id ? "bg-[#E4EDDF]/30" : ""}
+                            />
+                          </div>
+
+                          {/* Remover */}
+                          <div className="col-span-1 flex items-end justify-end">
+                            <button
+                              type="button"
+                              onClick={() => removeItem(idx)}
+                              className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
+                            >
+                              <X className="w-4 h-4" strokeWidth={1.5} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="col-span-1 flex items-end justify-end">
-                        <button
-                          type="button"
-                          onClick={() => removeItem(idx)}
-                          className="p-2 rounded-lg hover:bg-[#FBE7E7] text-[#7A726D] hover:text-[#D06B6B]"
-                        >
-                          <X className="w-4 h-4" strokeWidth={1.5} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
