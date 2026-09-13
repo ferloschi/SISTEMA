@@ -126,13 +126,13 @@ export default function Vendas() {
       const pr = products.find((p) => p.id === items[idx].product_id);
       const v = pr?.variants?.find((x) => x.id === variantId);
       if (v) {
-        const label = [v.color, v.material].filter(Boolean).join(" / ");
+        const parts = [v.color, v.material, v.size, v.fornecedor && `Forn: ${v.fornecedor}`].filter(Boolean);
+        const label = parts.join(" · ");
         items[idx] = {
           ...items[idx],
           variant_id: v.id,
           name: label ? `${pr.name} — ${label}` : pr.name,
-          // variante tem purchase_value mas não sale_value individual — usa o do produto pai
-          unit_price: pr.sale_value,
+          unit_price: v.sale_value || pr.sale_value,
           unit_cost: v.purchase_value,
         };
       }
@@ -561,7 +561,8 @@ export default function Vendas() {
                                 </SelectTrigger>
                                 <SelectContent>
                                   {pr.variants.map((v) => {
-                                    const label = [v.color, v.material].filter(Boolean).join(" / ") || "sem detalhes";
+                                    const parts = [v.color, v.material, v.size, v.fornecedor && `Forn: ${v.fornecedor}`].filter(Boolean);
+                                    const label = parts.join(" · ") || "sem detalhes";
                                     return (
                                       <SelectItem key={v.id} value={v.id}>
                                         <span className="flex items-center gap-2">
