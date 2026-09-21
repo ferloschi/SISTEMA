@@ -36,6 +36,7 @@ const emptyItem = {
 const emptyForm = {
   sale_date: todayISO(),
   patient_name: "",
+  child_name: "",
   phone: "",
   items: [{ ...emptyItem }],
   description: "",
@@ -329,12 +330,21 @@ export default function Vendas() {
                   />
                 </div>
                 <div>
-                  <Label>Nome do paciente *</Label>
+                  <Label>Nome do cliente *</Label>
                   <Input
                     value={form.patient_name}
                     onChange={(e) => setForm({ ...form, patient_name: e.target.value })}
-                    placeholder="Nome completo"
+                    placeholder="Nome completo do cliente"
                     data-testid="form-patient-name"
+                  />
+                </div>
+                <div>
+                  <Label>Nome da criança</Label>
+                  <Input
+                    value={form.child_name || ""}
+                    onChange={(e) => setForm({ ...form, child_name: e.target.value })}
+                    placeholder="Nome da criança (opcional)"
+                    data-testid="form-child-name"
                   />
                 </div>
                 <div>
@@ -730,6 +740,9 @@ export default function Vendas() {
                   <td className="py-3 px-4">{formatDate(s.sale_date)}</td>
                   <td className="py-3 px-4">
                     <div className="font-medium">{s.patient_name || "—"}</div>
+                    {s.child_name && (
+                      <div className="text-xs text-[#C97D63]">👧 {s.child_name}</div>
+                    )}
                     {s.phone && (
                       <div className="text-xs text-[#7A726D]">{s.phone}</div>
                     )}

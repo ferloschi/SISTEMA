@@ -166,7 +166,8 @@ class Sale(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     sale_date: str  # YYYY-MM-DD
-    patient_name: Optional[str] = ""
+    patient_name: Optional[str] = ""   # nome do cliente
+    child_name: Optional[str] = ""     # nome da criança
     phone: Optional[str] = ""
     items: List[SaleItem] = []
     description: Optional[str] = ""
@@ -190,7 +191,8 @@ class Sale(BaseModel):
 
 class SaleCreate(BaseModel):
     sale_date: str
-    patient_name: Optional[str] = ""
+    patient_name: Optional[str] = ""   # nome do cliente
+    child_name: Optional[str] = ""     # nome da criança
     phone: Optional[str] = ""
     items: List[SaleItem] = []
     description: Optional[str] = ""
@@ -723,6 +725,7 @@ async def compute_sale(payload: SaleCreate) -> Sale:
         return Sale(
             sale_date=payload.sale_date,
             patient_name=payload.patient_name or "",
+            child_name=payload.child_name or "",
             phone=payload.phone or "",
             items=items,
             description=payload.description or "",
@@ -782,6 +785,7 @@ async def compute_sale(payload: SaleCreate) -> Sale:
     return Sale(
         sale_date=payload.sale_date,
         patient_name=payload.patient_name or "",
+            child_name=payload.child_name or "",
         phone=payload.phone or "",
         items=items,
         description=payload.description or "",
