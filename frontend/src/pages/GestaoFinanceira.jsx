@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, formatBRL, formatDate } from "@/lib/api";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,12 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  Upload,
+  FileText,
+  AlertTriangle,
+  CheckCircle2,
+  HelpCircle,
+  Info,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -185,7 +191,7 @@ function ConferenciaCartao() {
   return (
     <div className="space-y-5">
       {/* Filtro de mês de RECEBIMENTO */}
-      <div className="brinquinho-card p-4 flex flex-wrap gap-6 items-end">
+      <div className="brinquinho-card p-4 flex flex-wrap gap-6 items-end" data-testid="conferencia-filtro">
         <div>
           <Label className="text-[11px] uppercase tracking-widest text-[#7A726D]">
             Mês de recebimento
@@ -224,6 +230,9 @@ function ConferenciaCartao() {
           </div>
         </div>
       </div>
+
+      {/* Conciliação bancária */}
+      <ImportacaoExtrato rows={rows} recvMonth={recvMonth} />
 
       {loading && (
         <div className="text-center py-10 text-[#7A726D] text-sm">Carregando…</div>
@@ -389,6 +398,479 @@ function ConferenciaCartao() {
 
 /* helper */
 function round2(n) { return Math.round((n || 0) * 100) / 100; }
+
+/* ═══════════════════════════════════════════════
+   PARSERS DE EXTRATO BANCÁRIO
+═══════════════════════════════════════════════ */
+
+/**
+ * Tenta extrair linhas do extrato. Suporta:
+ * - CSV genérico (separador ; ou ,)
+ * - OFX/QFX (XML-like do padrão Open Financial Exchange)
+ * - Texto com padrão "data valor descrição"
+ */
+function parseExtrato(text, fileName) {
+  const ext = (fileName || "").split(".").pop().toLowerCase();
+
+  if (ext === "ofx" || ext === "qfx" || text.includes("<OFX>") || text.includes("<STMTTRN>")) {
+    return parseOFX(text);
+  }
+  // CSV ou TXT
+  return parseCSV(text);
+}
+
+function parseOFX(text) {
+  const transactions = [];
+  // Regex para blocos <STMTTRN>...</STMTTRN>
+  const blockRe = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi;
+  let block;
+  while ((block = blockRe.exec(text)) !== null) {
+    const inner = block[1];
+    const amount = extractTag(inner, "TRNAMT") || extractTag(inner, "TRNAMOUNT");
+    const dateRaw = extractTag(inner, "DTPOSTED") || extractTag(inner, "DTUSER");
+    const memo = extractTag(inner, "MEMO") || extractTag(inner, "NAME") || "";
+    if (!amount || !dateRaw) continue;
+    const value = parseFloat(amount.replace(",", "."));
+    if (isNaN(value) || value <= 0) continue; // só créditos
+    const date = parseOFXDate(dateRaw);
+    if (!date) continue;
+    transactions.push({ date, value: round2(value), description: memo.trim() });
+  }
+  return transactions;
+}
+
+function extractTag(text, tag) {
+  const re = new RegExp(`<${tag}>([^<\n\r]+)`, "i");
+  const m = text.match(re);
+  return m ? m[1].trim() : null;
+}
+
+function parseOFXDate(raw) {
+  // Formato OFX: 20260715120000[−03:BRT] ou 20260715
+  const clean = raw.replace(/\[.*\]/, "").trim();
+  if (clean.length >= 8) {
+    const y = clean.slice(0, 4);
+    const m = clean.slice(4, 6);
+    const d = clean.slice(6, 8);
+    return `${y}-${m}-${d}`;
+  }
+  return null;
+}
+
+function parseCSV(text) {
+  const transactions = [];
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  // Detecta separador
+  const sep = lines[0]?.includes(";") ? ";" : ",";
+
+  // Tenta identificar colunas automaticamente
+  // Procura linha de cabeçalho com palavras-chave
+  let dateCol = -1, valueCol = -1, descCol = -1;
+  let headerRow = -1;
+
+  for (let i = 0; i < Math.min(5, lines.length); i++) {
+    const cols = lines[i].split(sep).map(c => c.replace(/["']/g, "").trim().toLowerCase());
+    const dIdx = cols.findIndex(c => c.includes("data") || c === "date" || c === "dt");
+    const vIdx = cols.findIndex(c =>
+      c.includes("valor") || c.includes("value") || c.includes("credito") ||
+      c.includes("crédito") || c.includes("lancamento") || c === "amount"
+    );
+    const descIdx = cols.findIndex(c =>
+      c.includes("descr") || c.includes("histor") || c.includes("memo") || c.includes("detalhe")
+    );
+    if (dIdx >= 0 && vIdx >= 0) {
+      dateCol = dIdx; valueCol = vIdx; descCol = descIdx;
+      headerRow = i;
+      break;
+    }
+  }
+
+  const startRow = headerRow >= 0 ? headerRow + 1 : 0;
+
+  for (let i = startRow; i < lines.length; i++) {
+    const cols = lines[i].split(sep).map(c => c.replace(/["']/g, "").trim());
+
+    if (dateCol >= 0 && valueCol >= 0 && cols.length > Math.max(dateCol, valueCol)) {
+      const date = normalizeDate(cols[dateCol]);
+      const value = parseValue(cols[valueCol]);
+      const description = descCol >= 0 ? (cols[descCol] || "") : (cols.slice(0, 5).join(" "));
+      if (date && value > 0) {
+        transactions.push({ date, value: round2(value), description: description.trim() });
+      }
+      continue;
+    }
+
+    // Fallback: busca linha que parece ter data e valor
+    let date = null, value = null, description = "";
+    for (const col of cols) {
+      if (!date) date = normalizeDate(col);
+      if (!value || value <= 0) {
+        const v = parseValue(col);
+        if (v > 0) value = v;
+      }
+    }
+    if (date && value && value > 0) {
+      description = cols.join(" ");
+      transactions.push({ date, value: round2(value), description: description.trim() });
+    }
+  }
+
+  return transactions;
+}
+
+function normalizeDate(str) {
+  if (!str) return null;
+  str = str.trim();
+  // DD/MM/YYYY ou DD-MM-YYYY
+  let m = str.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  // YYYY-MM-DD
+  m = str.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  // DD/MM/YY
+  m = str.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{2})$/);
+  if (m) return `20${m[3]}-${m[2]}-${m[1]}`;
+  return null;
+}
+
+function parseValue(str) {
+  if (!str) return 0;
+  // Remove R$, espaços, pontos de milhar e converte vírgula decimal
+  const clean = str.replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(clean);
+  return isNaN(n) ? 0 : n;
+}
+
+/* ═══════════════════════════════════════════════
+   CONCILIAÇÃO
+═══════════════════════════════════════════════ */
+const TOLERANCE = 0.05; // R$ 0,05 de tolerância por arredondamentos
+
+function conciliar(extratoRows, sistemRows) {
+  // Cria cópia mutável do extrato para marcar os usados
+  const extrato = extratoRows.map((r, idx) => ({ ...r, _idx: idx, _matched: false }));
+
+  const results = sistemRows.map((sr) => {
+    // Busca no extrato: mesmo valor (±tolerância) e data próxima (±3 dias)
+    const srDate = new Date(sr.recvDate + "T12:00:00");
+    const candidates = extrato.filter(e => {
+      if (e._matched) return false;
+      const diff = Math.abs(e.value - sr.liquido);
+      if (diff > TOLERANCE) return false;
+      const eDt = new Date(e.date + "T12:00:00");
+      const daysDiff = Math.abs((eDt - srDate) / 86400000);
+      return daysDiff <= 3;
+    });
+
+    if (candidates.length === 0) return { ...sr, status: "nao_encontrado", extratoEntry: null };
+
+    // Escolhe o mais próximo em data
+    candidates.sort((a, b) => {
+      const da = Math.abs(new Date(a.date + "T12:00:00") - srDate);
+      const db = Math.abs(new Date(b.date + "T12:00:00") - srDate);
+      return da - db;
+    });
+
+    const chosen = candidates[0];
+    chosen._matched = true;
+    return { ...sr, status: "ok", extratoEntry: chosen };
+  });
+
+  // Entradas do extrato sem par no sistema
+  const sobras = extrato.filter(e => !e._matched).map(e => ({ ...e, status: "extra" }));
+
+  return { results, sobras };
+}
+
+/* ═══════════════════════════════════════════════
+   COMPONENTE: IMPORTAÇÃO DE EXTRATO
+═══════════════════════════════════════════════ */
+function ImportacaoExtrato({ rows, recvMonth, onConciliacaoUpdate }) {
+  const fileRef = useRef(null);
+  const [extratoRows, setExtratoRows] = useState([]);
+  const [fileName, setFileName] = useState("");
+  const [conciliacao, setConciliacao] = useState(null);
+  const [loadingFile, setLoadingFile] = useState(false);
+  const [showExtrato, setShowExtrato] = useState(false);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoadingFile(true);
+    setFileName(file.name);
+    try {
+      const text = await file.text();
+      const parsed = parseExtrato(text, file.name);
+      if (parsed.length === 0) {
+        toast.error("Não foi possível ler transações neste arquivo. Verifique o formato (CSV, OFX).");
+        setLoadingFile(false);
+        return;
+      }
+      setExtratoRows(parsed);
+      toast.success(`${parsed.length} transação(ões) lida(s) do extrato`);
+    } catch (err) {
+      toast.error("Erro ao ler o arquivo: " + (err.message || "formato inválido"));
+    } finally {
+      setLoadingFile(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleConciliar = () => {
+    if (extratoRows.length === 0) {
+      toast.error("Importe um extrato primeiro");
+      return;
+    }
+    if (rows.length === 0) {
+      toast.error("Não há parcelas a receber neste mês para comparar");
+      return;
+    }
+    const result = conciliar(extratoRows, rows);
+    setConciliacao(result);
+    onConciliacaoUpdate?.(result);
+  };
+
+  const limpar = () => {
+    setExtratoRows([]);
+    setFileName("");
+    setConciliacao(null);
+    onConciliacaoUpdate?.(null);
+  };
+
+  // Totais da conciliação
+  const stats = useMemo(() => {
+    if (!conciliacao) return null;
+    const ok = conciliacao.results.filter(r => r.status === "ok").length;
+    const naoEncontrado = conciliacao.results.filter(r => r.status === "nao_encontrado").length;
+    const extra = conciliacao.sobras.length;
+    const totalOkLiquido = round2(conciliacao.results.filter(r => r.status === "ok").reduce((s, r) => s + r.liquido, 0));
+    const totalPendenteNaoEnt = round2(conciliacao.results.filter(r => r.status === "nao_encontrado").reduce((s, r) => s + r.liquido, 0));
+    const totalExtraExtrato = round2(conciliacao.sobras.reduce((s, r) => s + r.value, 0));
+    return { ok, naoEncontrado, extra, totalOkLiquido, totalPendenteNaoEnt, totalExtraExtrato };
+  }, [conciliacao]);
+
+  return (
+    <div className="brinquinho-card overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-[#EBE8E3] flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-[#F2E4DF] flex items-center justify-center shrink-0">
+          <FileText className="w-4.5 h-4.5 text-[#C97D63]" strokeWidth={1.5} />
+        </div>
+        <div>
+          <p className="font-heading font-semibold text-[#2D2825]">Conciliação Bancária</p>
+          <p className="text-xs text-[#7A726D]">
+            Importe o extrato do seu banco e compare com o previsto em {fmtMonth(recvMonth)}
+          </p>
+        </div>
+      </div>
+
+      <div className="p-5 space-y-5">
+        {/* Área de upload */}
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <Label className="text-[11px] uppercase tracking-widest text-[#7A726D]">
+              Arquivo de extrato
+            </Label>
+            <p className="text-[11px] text-[#7A726D] mb-1">Formatos aceitos: CSV, OFX, QFX, TXT</p>
+            <div className="flex items-center gap-2 flex-wrap mt-1">
+              <input
+                type="file"
+                ref={fileRef}
+                accept=".csv,.ofx,.qfx,.txt,.xls,.xlsx"
+                onChange={handleFile}
+                className="hidden"
+                id="extrato-upload"
+              />
+              <label
+                htmlFor="extrato-upload"
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer text-sm font-medium transition ${
+                  loadingFile
+                    ? "bg-[#FDFDF9] text-[#7A726D] border-[#EBE8E3] cursor-wait"
+                    : "bg-white border-[#C97D63] text-[#C97D63] hover:bg-[#F2E4DF]"
+                }`}
+              >
+                <Upload className="w-4 h-4" strokeWidth={1.5} />
+                {loadingFile ? "Lendo…" : "Importar extrato"}
+              </label>
+
+              {extratoRows.length > 0 && (
+                <>
+                  <button
+                    onClick={handleConciliar}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#5C7053] text-white text-sm font-medium hover:bg-[#4D5F47] transition"
+                  >
+                    <CheckCircle2 className="w-4 h-4" strokeWidth={1.5} />
+                    Conciliar
+                  </button>
+                  <button
+                    onClick={limpar}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#EBE8E3] text-[#7A726D] text-sm hover:text-[#D06B6B] hover:border-[#D06B6B] transition"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Limpar
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Info do arquivo carregado */}
+          {extratoRows.length > 0 && (
+            <div className="ml-auto text-right">
+              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">Extrato carregado</p>
+              <p className="font-medium text-[#2D2825] text-sm truncate max-w-48">{fileName}</p>
+              <p className="text-xs text-[#7A726D]">{extratoRows.length} transação(ões)</p>
+              <button
+                onClick={() => setShowExtrato(!showExtrato)}
+                className="text-[11px] text-[#C97D63] underline mt-0.5"
+              >
+                {showExtrato ? "Ocultar" : "Ver"} transações
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Dica de formato */}
+        {extratoRows.length === 0 && (
+          <div className="rounded-xl bg-[#FDFDF9] border border-[#EBE8E3] p-4 flex gap-3">
+            <Info className="w-4 h-4 text-[#7A726D] shrink-0 mt-0.5" strokeWidth={1.5} />
+            <div className="text-xs text-[#7A726D] space-y-1">
+              <p className="font-medium text-[#2D2825]">Como exportar o extrato do seu banco:</p>
+              <p>• <strong>Itaú / Bradesco / Santander:</strong> Internet Banking → Extrato → Exportar → OFX ou CSV</p>
+              <p>• <strong>Nubank / Inter / C6:</strong> App → Extrato → Exportar → CSV</p>
+              <p>• <strong>Cielo / Rede / Stone (maquininha):</strong> Portal → Relatórios → CSV com créditos do período</p>
+              <p className="text-[#C97D63]">⚠ Certifique-se de exportar apenas os <strong>créditos</strong> (recebimentos) do período {fmtMonth(recvMonth)}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Tabela de extrato bruto */}
+        {showExtrato && extratoRows.length > 0 && (
+          <div className="rounded-xl border border-[#EBE8E3] overflow-hidden">
+            <div className="px-4 py-2 bg-[#FDFDF9] text-[10px] uppercase tracking-widest text-[#7A726D] font-semibold grid grid-cols-3 gap-2">
+              <span>Data</span><span className="text-right">Valor</span><span>Descrição</span>
+            </div>
+            <div className="divide-y divide-[#EBE8E3] max-h-52 overflow-y-auto">
+              {extratoRows.map((e, i) => (
+                <div key={i} className="px-4 py-2 grid grid-cols-3 gap-2 text-xs">
+                  <span className="text-[#7A726D]">{formatDate(e.date)}</span>
+                  <span className="text-right font-medium text-[#5C7053]">{formatBRL(e.value)}</span>
+                  <span className="text-[#7A726D] truncate">{e.description || "—"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Resultado da conciliação */}
+        {conciliacao && stats && (
+          <div className="space-y-4">
+            {/* Cards de resumo */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-xl border border-[#C8DABF] bg-[#E4EDDF]/40 p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle2 className="w-4 h-4 text-[#5C7053]" strokeWidth={2} />
+                  <p className="text-[11px] uppercase tracking-widest text-[#5C7053] font-semibold">Conciliado</p>
+                </div>
+                <p className="text-xl font-heading font-semibold text-[#5C7053]">{formatBRL(stats.totalOkLiquido)}</p>
+                <p className="text-xs text-[#7A726D] mt-1">{stats.ok} parcela(s) encontrada(s) no extrato</p>
+              </div>
+              <div className="rounded-xl border border-[#E8CFC1] bg-[#F2E4DF]/40 p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle className="w-4 h-4 text-[#C97D63]" strokeWidth={2} />
+                  <p className="text-[11px] uppercase tracking-widest text-[#C97D63] font-semibold">Não encontrado</p>
+                </div>
+                <p className="text-xl font-heading font-semibold text-[#C97D63]">{formatBRL(stats.totalPendenteNaoEnt)}</p>
+                <p className="text-xs text-[#7A726D] mt-1">{stats.naoEncontrado} parcela(s) sem par no extrato</p>
+              </div>
+              <div className="rounded-xl border border-[#D4CCE8] bg-[#EAE7F2]/40 p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <HelpCircle className="w-4 h-4 text-[#7A68B8]" strokeWidth={2} />
+                  <p className="text-[11px] uppercase tracking-widest text-[#7A68B8] font-semibold">Sobras no extrato</p>
+                </div>
+                <p className="text-xl font-heading font-semibold text-[#7A68B8]">{formatBRL(stats.totalExtraExtrato)}</p>
+                <p className="text-xs text-[#7A726D] mt-1">{stats.extra} lançamento(s) não vinculados</p>
+              </div>
+            </div>
+
+            {/* Tabela de resultados */}
+            <div className="rounded-xl border border-[#EBE8E3] overflow-hidden">
+              <div className="px-4 py-2 bg-[#FDFDF9] border-b border-[#EBE8E3]">
+                <p className="text-xs font-semibold text-[#2D2825]">Parcelas esperadas × extrato bancário</p>
+              </div>
+              <div className="divide-y divide-[#EBE8E3] max-h-96 overflow-y-auto">
+                {conciliacao.results.map((r, i) => (
+                  <div key={i} className={`px-4 py-3 flex items-center gap-3 ${
+                    r.status === "ok" ? "bg-[#E4EDDF]/10" : "bg-[#F2E4DF]/10"
+                  }`}>
+                    <div className="shrink-0">
+                      {r.status === "ok"
+                        ? <CheckCircle2 className="w-4 h-4 text-[#5C7053]" strokeWidth={2} />
+                        : <AlertTriangle className="w-4 h-4 text-[#C97D63]" strokeWidth={2} />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      {/* Sistema */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                        <span className="text-xs text-[#7A726D]">{formatDate(r.recvDate)}</span>
+                        <span className="text-sm font-medium text-[#2D2825] truncate">{r.client}</span>
+                        <span className="text-xs text-[#7A726D]">{r.installmentNum}/{r.totalInstallments}</span>
+                        <span className={`text-sm font-semibold ${r.status === "ok" ? "text-[#5C7053]" : "text-[#C97D63]"}`}>
+                          {formatBRL(r.liquido)}
+                        </span>
+                      </div>
+                      {/* Par no extrato */}
+                      {r.extratoEntry && (
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[#7A726D]">
+                          <span>↳ Extrato: {formatDate(r.extratoEntry.date)} · {formatBRL(r.extratoEntry.value)}</span>
+                          {r.extratoEntry.description && (
+                            <span className="truncate max-w-40">{r.extratoEntry.description}</span>
+                          )}
+                        </div>
+                      )}
+                      {r.status === "nao_encontrado" && (
+                        <p className="text-[11px] text-[#C97D63] mt-0.5">
+                          ↳ Não encontrado no extrato — verifique se o pagamento foi recebido
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Sobras do extrato */}
+                {conciliacao.sobras.length > 0 && (
+                  <>
+                    <div className="px-4 py-2 bg-[#EAE7F2]/30 border-t border-[#D4CCE8]">
+                      <p className="text-[10px] uppercase tracking-widest text-[#7A68B8] font-semibold">
+                        Lançamentos no extrato sem par no sistema
+                      </p>
+                    </div>
+                    {conciliacao.sobras.map((e, i) => (
+                      <div key={i} className="px-4 py-3 flex items-center gap-3 bg-[#EAE7F2]/10">
+                        <HelpCircle className="w-4 h-4 text-[#7A68B8] shrink-0" strokeWidth={2} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                            <span className="text-xs text-[#7A726D]">{formatDate(e.date)}</span>
+                            <span className="text-sm font-semibold text-[#7A68B8]">{formatBRL(e.value)}</span>
+                            <span className="text-xs text-[#7A726D] truncate max-w-48">{e.description || "—"}</span>
+                          </div>
+                          <p className="text-[11px] text-[#7A726D] mt-0.5">
+                            Entrada no extrato sem correspondência — pode ser outro tipo de recebimento
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════════════
    COMPONENTE PRINCIPAL
