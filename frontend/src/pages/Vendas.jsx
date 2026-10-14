@@ -748,7 +748,13 @@ export default function Vendas() {
                     )}
                   </td>
                   <td className="py-3 px-4 text-[#7A726D]">
-                    {s.items.map((i) => `${i.qty}x ${i.name}`).join(", ") || s.description}
+                    {(() => {
+                      const first = s.items?.[0];
+                      if (!first) return s.description || "—";
+                      const label = first.sku || first.name || s.description || "—";
+                      const extra = s.items.length > 1 ? ` +${s.items.length - 1}` : "";
+                      return label + extra;
+                    })()}
                   </td>
                   <td className="py-3 px-4">
                     <span className="bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1] px-2 py-1 rounded-full text-xs">
