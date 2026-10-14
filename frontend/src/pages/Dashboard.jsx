@@ -221,7 +221,7 @@ export default function Dashboard() {
           icon={ShoppingBag}
           label="Vendas de hoje"
           value={data.today_sales}
-          hint={formatDate(data.today)}
+          hint={data.today_gross > 0 ? formatBRL(data.today_gross) : formatDate(data.today)}
           accent="#DDA15E"
           testid="stat-today-sales"
         />

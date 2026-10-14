@@ -1112,7 +1112,9 @@ async def dashboard():
     sales_count = len(month_sales)
 
     # Vendas de hoje
-    today_sales = await db.sales.count_documents({"sale_date": today})
+    today_docs = await db.sales.find({"sale_date": today}).to_list(length=None)
+    today_sales = len(today_docs)
+    today_gross = round(sum(s.get("gross_value", 0) for s in today_docs), 2)
 
     # Pós-venda pendente (janela -7d a +14d)
     seven_ago = (date.today() - timedelta(days=7)).isoformat()
@@ -1145,6 +1147,7 @@ async def dashboard():
         "today": today,
         "month": month_prefix,
         "today_sales": today_sales,
+        "today_gross": today_gross,
         "month_gross": round(total_gross, 2),
         "month_profit": round(total_profit, 2),
         "month_fees": round(total_fees, 2),
