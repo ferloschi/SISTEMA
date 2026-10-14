@@ -415,8 +415,53 @@ function parseExtrato(text, fileName) {
   if (ext === "ofx" || ext === "qfx" || text.includes("<OFX>") || text.includes("<STMTTRN>")) {
     return parseOFX(text);
   }
-  // CSV ou TXT
+  // CSV, TXT ou texto extraído de PDF
   return parseCSV(text);
+}
+
+/* Extrai texto de PDF usando pdf.js via CDN */
+async function extractPDFText(file) {
+  // Carrega pdf.js dinamicamente se ainda não estiver carregado
+  if (!window.pdfjsLib) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let fullText = "";
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    // Reconstrói linhas agrupando itens pela posição Y (mesma linha = mesmo Y ±2px)
+    const items = content.items.map(item => ({
+      text: item.str,
+      x: item.transform[4],
+      y: Math.round(item.transform[5]),
+    }));
+    // Agrupa por Y decrescente (PDF tem y=0 em baixo)
+    const lineMap = {};
+    for (const item of items) {
+      if (!lineMap[item.y]) lineMap[item.y] = [];
+      lineMap[item.y].push(item);
+    }
+    const sortedYs = Object.keys(lineMap).map(Number).sort((a, b) => b - a);
+    for (const y of sortedYs) {
+      const line = lineMap[y].sort((a, b) => a.x - b.x).map(i => i.text).join(" ");
+      fullText += line.trim() + "\n";
+    }
+    fullText += "\n";
+  }
+
+  return fullText;
 }
 
 function parseOFX(text) {
@@ -600,10 +645,23 @@ function ImportacaoExtrato({ rows, recvMonth, onConciliacaoUpdate }) {
     setLoadingFile(true);
     setFileName(file.name);
     try {
-      const text = await file.text();
+      const ext = file.name.split(".").pop().toLowerCase();
+      let text;
+
+      if (ext === "pdf") {
+        toast.info("Lendo PDF, aguarde…");
+        text = await extractPDFText(file);
+      } else {
+        text = await file.text();
+      }
+
       const parsed = parseExtrato(text, file.name);
       if (parsed.length === 0) {
-        toast.error("Não foi possível ler transações neste arquivo. Verifique o formato (CSV, OFX).");
+        toast.error(
+          ext === "pdf"
+            ? "Não encontrei transações no PDF. Verifique se o extrato tem datas e valores visíveis (não escaneado)."
+            : "Não foi possível ler transações neste arquivo. Verifique o formato (CSV, OFX, PDF)."
+        );
         setLoadingFile(false);
         return;
       }
@@ -672,12 +730,12 @@ function ImportacaoExtrato({ rows, recvMonth, onConciliacaoUpdate }) {
             <Label className="text-[11px] uppercase tracking-widest text-[#7A726D]">
               Arquivo de extrato
             </Label>
-            <p className="text-[11px] text-[#7A726D] mb-1">Formatos aceitos: CSV, OFX, QFX, TXT</p>
+            <p className="text-[11px] text-[#7A726D] mb-1">Formatos aceitos: PDF, CSV, OFX, QFX, TXT</p>
             <div className="flex items-center gap-2 flex-wrap mt-1">
               <input
                 type="file"
                 ref={fileRef}
-                accept=".csv,.ofx,.qfx,.txt,.xls,.xlsx"
+                accept=".pdf,.csv,.ofx,.qfx,.txt"
                 onChange={handleFile}
                 className="hidden"
                 id="extrato-upload"
@@ -737,9 +795,10 @@ function ImportacaoExtrato({ rows, recvMonth, onConciliacaoUpdate }) {
             <Info className="w-4 h-4 text-[#7A726D] shrink-0 mt-0.5" strokeWidth={1.5} />
             <div className="text-xs text-[#7A726D] space-y-1">
               <p className="font-medium text-[#2D2825]">Como exportar o extrato do seu banco:</p>
-              <p>• <strong>Itaú / Bradesco / Santander:</strong> Internet Banking → Extrato → Exportar → OFX ou CSV</p>
-              <p>• <strong>Nubank / Inter / C6:</strong> App → Extrato → Exportar → CSV</p>
-              <p>• <strong>Cielo / Rede / Stone (maquininha):</strong> Portal → Relatórios → CSV com créditos do período</p>
+              <p>• <strong>Itaú / Bradesco / Santander:</strong> Internet Banking → Extrato → Exportar → PDF, OFX ou CSV</p>
+              <p>• <strong>Nubank / Inter / C6:</strong> App → Extrato → Exportar → PDF ou CSV</p>
+              <p>• <strong>Cielo / Rede / Stone (maquininha):</strong> Portal → Relatórios → PDF ou CSV com créditos do período</p>
+              <p>• <strong>PDF:</strong> Funciona com PDFs de texto — se o arquivo foi escaneado (foto), use CSV ou OFX</p>
               <p className="text-[#C97D63]">⚠ Certifique-se de exportar apenas os <strong>créditos</strong> (recebimentos) do período {fmtMonth(recvMonth)}</p>
             </div>
           </div>
