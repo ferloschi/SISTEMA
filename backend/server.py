@@ -1099,7 +1099,9 @@ async def mark_sale_pending(sale_id: str):
 # =====================
 @api_router.get("/dashboard")
 async def dashboard():
-    today = date.today().isoformat()
+    # Usa fuso horário de Brasília (UTC-3) para calcular "hoje"
+    brasilia = timezone(timedelta(hours=-3))
+    today = datetime.now(brasilia).date().isoformat()
     month_prefix = today[:7]
 
     # Month sales
@@ -1117,8 +1119,9 @@ async def dashboard():
     today_gross = round(sum(s.get("gross_value", 0) for s in today_docs), 2)
 
     # Pós-venda pendente (janela -7d a +14d)
-    seven_ago = (date.today() - timedelta(days=7)).isoformat()
-    in_14 = (date.today() + timedelta(days=14)).isoformat()
+    today_date = datetime.now(brasilia).date()
+    seven_ago = (today_date - timedelta(days=7)).isoformat()
+    in_14 = (today_date + timedelta(days=14)).isoformat()
     pending_reminders = await db.sales.count_documents({
         "post_sale_date": {"$gte": seven_ago, "$lte": in_14},
         "post_sale_contacted": {"$ne": True},
