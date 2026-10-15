@@ -217,14 +217,21 @@ export default function Dashboard() {
           onDelete={deleteMonthSales}
           deleteTitle={`Excluir todas as vendas de ${data.month}`}
         />
-        <StatCard
-          icon={ShoppingBag}
-          label="Vendas de hoje"
-          value={data.today_sales}
-          hint={data.today_gross > 0 ? formatBRL(data.today_gross) : formatDate(data.today)}
-          accent="#DDA15E"
-          testid="stat-today-sales"
-        />
+        <div className="brinquinho-card p-6" data-testid="stat-today-sales">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-widest text-[#7A726D]">Vendas de hoje</p>
+              <p className="stat-number text-3xl mt-2 text-[#2D2825]">{data.today_sales}</p>
+              {data.today_gross > 0 && (
+                <p className="text-lg font-semibold text-[#DDA15E] mt-1">{formatBRL(data.today_gross)}</p>
+              )}
+              <p className="text-xs text-[#7A726D] mt-1">{formatDate(data.today)}</p>
+            </div>
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: "#DDA15E1A" }}>
+              <ShoppingBag className="w-5 h-5" style={{ color: "#DDA15E" }} strokeWidth={1.5} />
+            </div>
+          </div>
+        </div>
         <StatCard
           icon={Bell}
           label="Lembretes pós-venda"
