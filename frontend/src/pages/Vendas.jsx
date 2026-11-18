@@ -78,10 +78,26 @@ export default function Vendas() {
         acc.gross += s.gross_value;
         acc.profit += s.profit;
         acc.fees += s.fee_amount;
+        acc.cost += s.total_cost || 0;
         return acc;
       },
-      { gross: 0, profit: 0, fees: 0 }
+      { gross: 0, profit: 0, fees: 0, cost: 0 }
     );
+  }, [sales]);
+
+  // Agrupa vendas por pacote/produto para o resumo no final
+  const groupedSales = useMemo(() => {
+    const map = {};
+    for (const s of sales) {
+      const label = (s.description || s.items?.[0]?.name || "Sem descrição").trim();
+      if (!map[label]) map[label] = { label, count: 0, gross: 0, cost: 0, fees: 0, profit: 0 };
+      map[label].count += 1;
+      map[label].gross  += s.gross_value || 0;
+      map[label].cost   += (s.total_cost || 0) + (s.fee_amount || 0); // custo + taxa
+      map[label].fees   += s.fee_amount || 0;
+      map[label].profit += s.profit || 0;
+    }
+    return Object.values(map).sort((a, b) => b.count - a.count);
   }, [sales]);
 
   const openNew = () => {
@@ -778,6 +794,103 @@ export default function Vendas() {
           </tbody>
         </table>
       </div>
+
+      {/* ── Resumo por pacote/produto ── */}
+      {groupedSales.length > 0 && (
+        <div className="brinquinho-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#EBE8E3]">
+            <p className="font-heading font-semibold text-[#2D2825]">
+              Resumo por pacote / produto — {monthFilter}
+            </p>
+            <p className="text-xs text-[#7A726D] mt-0.5">
+              Custo total já inclui taxa de cartão
+            </p>
+          </div>
+
+          {/* Desktop */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#FDFDF9] border-b border-[#EBE8E3] text-xs font-semibold uppercase text-[#7A726D]">
+                  <th className="py-3 px-5 text-left">Pacote / Produto</th>
+                  <th className="py-3 px-4 text-center">Qtd</th>
+                  <th className="py-3 px-4 text-right">Valor de venda</th>
+                  <th className="py-3 px-4 text-right">Custo total</th>
+                  <th className="py-3 px-4 text-right">Lucro</th>
+                  <th className="py-3 px-4 text-right">Margem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedSales.map((g) => {
+                  const margin = g.gross > 0 ? ((g.profit / g.gross) * 100).toFixed(1) : "0.0";
+                  return (
+                    <tr key={g.label} className="border-b border-[#EBE8E3] hover:bg-[#FDFDF9]/60">
+                      <td className="py-3 px-5 font-medium text-[#2D2825]">{g.label}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1] px-2 py-0.5 rounded-full text-xs font-semibold">
+                          {g.count}x
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right font-medium">{formatBRL(g.gross)}</td>
+                      <td className="py-3 px-4 text-right text-[#D06B6B]">{formatBRL(g.cost)}</td>
+                      <td className="py-3 px-4 text-right font-semibold text-[#5C7053]">{formatBRL(g.profit)}</td>
+                      <td className="py-3 px-4 text-right text-xs text-[#7A726D]">{margin}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-[#FDFDF9] border-t-2 border-[#EBE8E3] font-semibold text-[#2D2825]">
+                  <td className="py-3 px-5">Total geral</td>
+                  <td className="py-3 px-4 text-center text-[#C97D63]">{sales.length}x</td>
+                  <td className="py-3 px-4 text-right">{formatBRL(totals.gross)}</td>
+                  <td className="py-3 px-4 text-right text-[#D06B6B]">
+                    {formatBRL(totals.cost + totals.fees)}
+                  </td>
+                  <td className="py-3 px-4 text-right text-[#5C7053]">{formatBRL(totals.profit)}</td>
+                  <td className="py-3 px-4 text-right text-xs text-[#7A726D]">
+                    {totals.gross > 0 ? ((totals.profit / totals.gross) * 100).toFixed(1) : "0.0"}%
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {/* Mobile: cards */}
+          <div className="sm:hidden divide-y divide-[#EBE8E3]">
+            {groupedSales.map((g) => {
+              const margin = g.gross > 0 ? ((g.profit / g.gross) * 100).toFixed(1) : "0.0";
+              return (
+                <div key={g.label} className="px-4 py-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-medium text-[#2D2825] flex-1 mr-2">{g.label}</p>
+                    <span className="bg-[#F2E4DF] text-[#C97D63] border border-[#E8CFC1] px-2 py-0.5 rounded-full text-xs font-semibold shrink-0">
+                      {g.count}x
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1">
+                    <span className="text-[#7A726D]">Venda: <strong className="text-[#2D2825]">{formatBRL(g.gross)}</strong></span>
+                    <span className="text-[#D06B6B]">Custo: <strong>{formatBRL(g.cost)}</strong></span>
+                    <span className="text-[#5C7053]">Lucro: <strong>{formatBRL(g.profit)}</strong></span>
+                    <span className="text-[#7A726D]">Margem: <strong>{margin}%</strong></span>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="px-4 py-3 bg-[#FDFDF9] font-semibold text-sm">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[#2D2825]">Total geral</p>
+                <span className="text-[#C97D63]">{sales.length}x</span>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1">
+                <span className="text-[#7A726D]">Venda: <strong className="text-[#2D2825]">{formatBRL(totals.gross)}</strong></span>
+                <span className="text-[#D06B6B]">Custo: <strong>{formatBRL(totals.cost + totals.fees)}</strong></span>
+                <span className="text-[#5C7053]">Lucro: <strong>{formatBRL(totals.profit)}</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
